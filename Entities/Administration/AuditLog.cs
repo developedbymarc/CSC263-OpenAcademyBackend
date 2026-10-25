@@ -11,7 +11,7 @@ public class AuditLog
     /// <summary><c>null</c> = performed by the system (e.g. the moderation scan).</summary>
     public Guid? ActorId { get; set; }
 
-    public User? Actor { get; set; }
+    public ApplicationUser? Actor { get; set; }
 
     /// <summary>e.g. "Role.Assigned", "Admin.Created"</summary>
     [Required]

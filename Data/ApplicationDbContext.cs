@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -12,12 +13,13 @@ using Category = OpenAcademy.Entities.Courses.Category;
 
 namespace OpenAcademy.Data;
 
-public sealed class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
+public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>, IDataProtectionKeyContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
     }
 
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
     public DbSet<StudentProfile> StudentProfiles { get; set; }
     public DbSet<InstructorProfile> InstructorProfiles { get; set; }
     public DbSet<ModeratorProfile> ModeratorProfiles { get; set; }
@@ -50,7 +52,7 @@ public sealed class ApplicationDbContext : IdentityDbContext<User, IdentityRole<
 
     private static void ConfigureUsers(ModelBuilder builder)
     {
-        builder.Entity<User>(b =>
+        builder.Entity<ApplicationUser>(b =>
         {
             b.Property(u => u.Id).ValueGeneratedNever(); // assigned in the User constructor (Guid.NewGuid())
             b.Property(u => u.CreatedAt).HasDefaultValueSql("now()");

@@ -7,7 +7,7 @@ namespace OpenAcademy.Entities.Users.RoleProfiles;
 public class ModeratorProfile
 {
     [Key] [ForeignKey("User")] public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public ApplicationUser User { get; set; } = null!;
 
     public DateTimeOffset CreatedAt { get; set; }
 

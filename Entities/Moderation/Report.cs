@@ -13,7 +13,7 @@ public class Report : ITimestamped
     /// </summary>
     public Guid? IssuerId { get; set; }
 
-    public User? Issuer { get; set; }
+    public ApplicationUser? Issuer { get; set; }
 
     /// <summary>
     /// Best case: An actual entity type from <code>OpenAcademy.Entities</code>
@@ -46,7 +46,7 @@ public class Report : ITimestamped
     /// </summary>
     public Guid? ClosedById { get; set; }
 
-    public User? ClosedBy { get; set; }
+    public ApplicationUser? ClosedBy { get; set; }
     public ReportClosureReason? ClosureReason { get; set; }
 
     /// <summary>The documented decision ("let Admins document their decisions").</summary>

@@ -7,10 +7,10 @@ using OpenAcademy.Entities.Users.RoleProfiles;
 
 namespace OpenAcademy.Entities.Users;
 
-public class User : IdentityUser<Guid>
+public class ApplicationUser : IdentityUser<Guid>
 {
     // IdentityUser<Guid> does not assign an Id by itself, so the Id exists as soon as the object does.
-    public User()
+    public ApplicationUser()
     {
         Id = Guid.NewGuid();
     }

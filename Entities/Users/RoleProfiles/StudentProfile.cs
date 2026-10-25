@@ -7,7 +7,7 @@ namespace OpenAcademy.Entities.Users.RoleProfiles;
 public class StudentProfile
 {
     [Key] [ForeignKey("User")] public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public ApplicationUser User { get; set; } = null!;
 
     public ICollection<Enrollment> Enrollments { get; } = new List<Enrollment>();
 }

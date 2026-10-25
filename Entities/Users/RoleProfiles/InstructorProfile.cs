@@ -7,7 +7,7 @@ namespace OpenAcademy.Entities.Users.RoleProfiles;
 public class InstructorProfile
 {
     [Key] [ForeignKey("User")] public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public ApplicationUser User { get; set; } = null!;
 
     // All optional: the (empty) profile is created at registration, the instructor fills it in later.
     [MaxLength(128)] public string? Headline { get; set; }
