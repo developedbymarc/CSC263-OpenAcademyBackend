@@ -1,0 +1,122 @@
+erDiagram
+    User {
+        uuid Id PK
+        string Email "Identity"
+        string FirstName
+        string LastName
+        string Status "Active|Inactive|Disabled"
+        datetimeoffset CreatedAt
+    }
+    IdentityRole {
+        uuid Id PK
+        string Name "Root|Admin|Moderator|Instructor|Student"
+    }
+    StudentProfile {
+        uuid UserId PK, FK
+    }
+    InstructorProfile {
+        uuid UserId PK, FK
+        string Headline "nullable"
+        string Bio "nullable"
+        string Expertise "nullable"
+    }
+    ModeratorProfile {
+        uuid UserId PK, FK
+        datetimeoffset CreatedAt
+    }
+    AdminProfile {
+        uuid UserId PK, FK
+        datetimeoffset CreatedAt
+    }
+    RefreshToken {
+        uuid Id PK
+        uuid UserId FK
+        uuid FamilyId
+        uuid ReplacedById "no FK"
+        string TokenHash UK
+        datetimeoffset ExpiresAt
+        datetimeoffset RevokedAt "nullable"
+    }
+    Course {
+        uuid Id PK
+        uuid InstructorId FK
+        string Title
+        string Status "Draft|Published"
+        datetimeoffset CreatedAt
+        datetimeoffset UpdatedAt
+    }
+    Category {
+        int Id PK
+        string Name UK
+        string Slug UK
+    }
+    Module {
+        uuid Id PK
+        uuid CourseId FK
+        string Title
+        int Order
+    }
+    Lesson {
+        uuid Id PK
+        uuid ModuleId FK
+        string Title
+        text Content "Markdown"
+        int Order
+    }
+    LessonAsset {
+        uuid Id PK
+        uuid LessonId FK
+        string BlobPath
+        string Type "Image|Video"
+        string Status "Uploading|Ready|Failed"
+        bigint SizeBytes
+        int Order
+    }
+    Enrollment {
+        uuid StudentId PK, FK
+        uuid CourseId PK, FK
+        datetimeoffset EnrollmentDate
+        string Status "Active|Withdrawn"
+    }
+    Report {
+        bigint Id PK
+        uuid IssuerId FK "nullable = automated scan"
+        uuid AssignedToId FK "nullable"
+        uuid ElevatedToId FK "nullable"
+        uuid ClosedById FK "nullable"
+        string ContentType "nullable, no FK"
+        string ContentId "nullable, no FK"
+        string Reason
+        string ClosureReason "nullable"
+        datetimeoffset ClosedAt "nullable"
+    }
+    AuditLog {
+        bigint Id PK
+        uuid ActorId FK "nullable = system"
+        string Action
+        string TargetType "no FK"
+        string TargetId "no FK"
+        datetimeoffset Timestamp
+    }
+
+    User }o--o{ IdentityRole : "AspNetUserRoles"
+    User ||--o| StudentProfile : "is a"
+    User ||--o| InstructorProfile : "is a"
+    User ||--o| ModeratorProfile : "is a"
+    User ||--o| AdminProfile : "is a"
+    User ||--o{ RefreshToken : "owns"
+    User |o--o{ AuditLog : "acts"
+
+    InstructorProfile ||--o{ Course : "authors (restrict)"
+    Course }o--o{ Category : "categories (join table made by EF)"
+    Course ||--o{ Module : "contains (cascade)"
+    Module ||--o{ Lesson : "contains (cascade)"
+    Lesson ||--o{ LessonAsset : "has (cascade)"
+
+    StudentProfile ||--o{ Enrollment : "enrolls"
+    Course ||--o{ Enrollment : "has (restrict)"
+
+    User |o--o{ Report : "files"
+    ModeratorProfile |o--o{ Report : "assigned"
+    AdminProfile |o--o{ Report : "escalated to"
+    User |o--o{ Report : "closes"

@@ -1,0 +1,49 @@
+﻿# --- secrets and local config (never copy into an image layer) ---
+**/.env
+**/.env.*
+**/*.key
+**/*.pem
+**/*.pfx
+**/*.crt
+**/.dev-keys
+**/appsettings.Development.json
+**/secrets.dev.yaml
+**/values.dev.yaml
+
+# --- build output ---
+**/bin
+**/obj
+**/TestResults
+
+# --- VCS and IDE ---
+**/.git
+**/.gitignore
+**/.vs
+**/.vscode
+**/.idea
+**/.project
+**/.settings
+**/.toolstarget
+**/*.user
+**/*.dbmdl
+**/*.jfm
+**/.DS_Store
+
+# --- container and deploy files ---
+**/.containerignore
+**/.dockerignore
+**/Containerfile*
+**/Dockerfile*
+**/compose*.y*ml
+**/docker-compose*
+**/podman-compose*
+**/azds.yaml
+**/charts
+
+# --- misc ---
+**/node_modules
+**/npm-debug.log
+**/*.tar
+**/*.tar.gz
+LICENSE
+README.md
