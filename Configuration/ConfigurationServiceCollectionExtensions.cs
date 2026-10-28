@@ -12,6 +12,7 @@ public static class ConfigurationServiceCollectionExtensions
         AddValidated<FrontendOptions, FrontendOptionsValidator>(services, FrontendOptions.SectionName);
         AddValidated<DatabaseOptions, DatabaseOptionsValidator>(services, DatabaseOptions.SectionName);
         AddValidated<KeyProtectionOptions, KeyProtectionOptionsValidator>(services, KeyProtectionOptions.SectionName);
+        AddValidated<SmtpEmailOptions, SmtpEmailOptionsValidator>(services, SmtpEmailOptions.SectionName);
         AddValidated<CsrfOptions>(services, CsrfOptions.SectionName);
         AddValidated<S3Options>(services, S3Options.SectionName);
 
