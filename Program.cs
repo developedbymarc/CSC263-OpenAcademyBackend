@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenAcademy.Configuration;
+using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities.Users;
@@ -21,6 +22,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add extra configuration providers (vaults, etc.) here, BEFORE Build()
 builder.Services.AddAppConfiguration();
+builder.Services.AddMedia();
 
 // NOTE: AddAppDataProtection must come AFTER any extra config providers
 builder.Services.AddAppDataProtection(builder.Configuration);
@@ -148,6 +150,15 @@ builder.Services.AddOpenApi();
 builder.Services.AddScoped<RootUserBootstrapper>();
 
 var app = builder.Build();
+
+if (args is ["migrate"])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
+        .Database.MigrateAsync();
+    return;
+}
+
 app.Services.GetRequiredService<IStartupValidator>().Validate();
 
 using (var scope = app.Services.CreateScope())

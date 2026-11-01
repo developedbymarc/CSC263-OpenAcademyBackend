@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAcademy.Configuration.Options;
+using OpenAcademy.Configuration.Validators;
 
 namespace OpenAcademy.Configuration;
 

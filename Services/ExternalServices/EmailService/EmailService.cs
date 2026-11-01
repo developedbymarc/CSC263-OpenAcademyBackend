@@ -3,6 +3,7 @@ using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Options;
 using MimeKit;
+using OpenAcademy.Configuration.Options;
 
 namespace OpenAcademy.Services.ExternalServices.EmailService;
 

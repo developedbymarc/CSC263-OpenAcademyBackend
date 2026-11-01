@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Options;
 using System.Net.Mail;
+using OpenAcademy.Configuration.Options;
+
+namespace OpenAcademy.Configuration.Validators;
 
 public sealed class SmtpEmailOptionsValidator
     : IValidateOptions<SmtpEmailOptions>

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using OpenAcademy.Configuration;
+using OpenAcademy.Configuration.Options;
 
 namespace OpenAcademy.Services.ApplicationServices.TokenService;
 

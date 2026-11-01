@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 
+namespace OpenAcademy.Configuration.Options;
+
 public enum SmtpSecurityMode
 {
     None,

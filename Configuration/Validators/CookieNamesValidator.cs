@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using OpenAcademy.Configuration.Options;
 
-namespace OpenAcademy.Configuration;
+namespace OpenAcademy.Configuration.Validators;
 
 /// <summary>Hook type so the cross-cookie rule runs at startup. It holds no settings.</summary>
 public sealed class CookieNamesCheck;

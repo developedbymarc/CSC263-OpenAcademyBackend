@@ -1,4 +1,4 @@
-namespace OpenAcademy.Configuration;
+namespace OpenAcademy.Configuration.Options;
 
 public interface ICookieNameOptions
 {

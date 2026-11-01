@@ -1,7 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.IdentityModel.Tokens;
+using OpenAcademy.Configuration.Options;
 
-namespace OpenAcademy.Configuration;
+namespace OpenAcademy.Configuration.Options;
 
 public sealed class JwtOptions : ICookieNameOptions
 {
