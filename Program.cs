@@ -14,6 +14,7 @@ using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities.Users;
+using OpenAcademy.Responses;
 using OpenAcademy.Startup;
 using Scalar.AspNetCore;
 
@@ -59,6 +60,22 @@ builder.Services
     {
         // Accepts both names and numbers when reading (e.g. "Instructor" / 0), writes names
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(entry => entry.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
+
+            return new BadRequestObjectResult(ApiResponse<object>.Failed(
+                "validation_failed",
+                "One or more validation errors occurred.",
+                errors));
+        };
     });
 
 // --- Database ---

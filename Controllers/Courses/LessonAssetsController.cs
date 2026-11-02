@@ -6,6 +6,7 @@ using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities;
 using OpenAcademy.Entities.Courses;
+using OpenAcademy.Responses;
 using OpenAcademy.Services.ExternalServices.MediaService;
 
 namespace OpenAcademy.Controllers;
@@ -22,45 +23,33 @@ public sealed class LessonAssetsController(
     IMediaService media,
     ILogger<LessonAssetsController> logger) : ControllerBase
 {
-    public sealed record LessonAssetDto(
-        Guid Id,
-        AssetType Type,
-        string ContentType,
-        long SizeBytes,
-        int? DurationSeconds,
-        int Order,
-        string Url,
-        DateTimeOffset UrlExpiresAt);
-
-    public sealed class UploadRequest
-    {
-        public IFormFile File { get; set; } = null!;
-    }
-
     // Presigned URLs are bearer credentials: never cache this response.
     [HttpGet]
     [Authorize(Policy = PolicyNames.CanReadLesson)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public async Task<ActionResult<IReadOnlyList<LessonAssetDto>>> List(Guid lessonId, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<LessonAssetDto>>>> List(
+        Guid lessonId, CancellationToken ct)
     {
         var assets = await db.LessonAssets.AsNoTracking()
             .Where(a => a.LessonId == lessonId && a.Status == AssetStatus.Ready)
             .OrderBy(a => a.Order)
             .ToListAsync(ct);
 
-        return assets.Select(a =>
+        var result = assets.Select(a =>
         {
             var link = media.CreateDownloadUrl(a.BlobPath);
             return new LessonAssetDto(a.Id, a.Type, a.ContentType, a.SizeBytes, a.DurationSeconds,
                 a.Order, link.Url, link.ExpiresAt);
         }).ToList();
+        return Ok(ApiResponse<IReadOnlyList<LessonAssetDto>>.Succeeded(result));
     }
 
     [HttpPost("images")]
     [Authorize(Policy = PolicyNames.CanEditLesson)]
     [RequestSizeLimit(MediaLimits.ImageCeilingBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MediaLimits.ImageCeilingBytes + 1024 * 1024)]
-    public Task<ActionResult<LessonAssetDto>> UploadImage(Guid lessonId, [FromForm] UploadRequest req,
+    public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadImage(
+        Guid lessonId, [FromForm] UploadLessonAssetRequest req,
         CancellationToken ct)
         => Upload(lessonId, req.File, AssetType.Image, media.StoreImageAsync, ct);
 
@@ -68,18 +57,21 @@ public sealed class LessonAssetsController(
     [Authorize(Policy = PolicyNames.CanEditLesson)]
     [RequestSizeLimit(MediaLimits.VideoCeilingBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MediaLimits.VideoCeilingBytes + 1024 * 1024)]
-    public Task<ActionResult<LessonAssetDto>> UploadVideo(Guid lessonId, [FromForm] UploadRequest req,
+    public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadVideo(
+        Guid lessonId, [FromForm] UploadLessonAssetRequest req,
         CancellationToken ct)
         => Upload(lessonId, req.File, AssetType.Video, media.StoreVideoAsync, ct);
 
     [HttpDelete("{assetId:guid}")]
     [Authorize(Policy = PolicyNames.CanEditLesson)]
-    public async Task<IActionResult> Delete(Guid lessonId, Guid assetId, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<object?>>> Delete(
+        Guid lessonId, Guid assetId, CancellationToken ct)
     {
         // Scoped by lessonId so the policy's lesson is the one the asset really belongs to.
         var asset = await db.LessonAssets
             .FirstOrDefaultAsync(a => a.Id == assetId && a.LessonId == lessonId, ct);
-        if (asset is null) return NotFound();
+        if (asset is null)
+            return NotFound(ApiResponse<object?>.Failed("asset_not_found", "The lesson asset was not found."));
 
         db.LessonAssets.Remove(asset);
         await db.SaveChangesAsync(ct);
@@ -93,12 +85,12 @@ public sealed class LessonAssetsController(
             logger.LogWarning(ex, "Orphaned blob {Path} after asset delete", asset.BlobPath);
         }
 
-        return NoContent();
+        return Ok(ApiResponse<object?>.Succeeded(null));
     }
 
     // ------------------------------------------------------------------
 
-    private async Task<ActionResult<LessonAssetDto>> Upload(
+    private async Task<ActionResult<ApiResponse<LessonAssetDto>>> Upload(
         Guid lessonId, IFormFile file, AssetType type,
         Func<string, IFormFile, CancellationToken, Task<StoredMedia>> store, CancellationToken ct)
     {
@@ -110,7 +102,8 @@ public sealed class LessonAssetsController(
         }
         catch (MediaRejectedException ex)
         {
-            return Problem(ex.Message, statusCode: ex.StatusCode);
+            return StatusCode(ex.StatusCode,
+                ApiResponse<LessonAssetDto>.Failed("media_rejected", ex.Message));
         }
 
         try
@@ -136,8 +129,9 @@ public sealed class LessonAssetsController(
 
             var link = media.CreateDownloadUrl(asset.BlobPath);
             return CreatedAtAction(nameof(List), new { lessonId },
-                new LessonAssetDto(asset.Id, asset.Type, asset.ContentType, asset.SizeBytes,
-                    asset.DurationSeconds, asset.Order, link.Url, link.ExpiresAt));
+                ApiResponse<LessonAssetDto>.Succeeded(new LessonAssetDto(
+                    asset.Id, asset.Type, asset.ContentType, asset.SizeBytes,
+                    asset.DurationSeconds, asset.Order, link.Url, link.ExpiresAt)));
         }
         catch
         {
