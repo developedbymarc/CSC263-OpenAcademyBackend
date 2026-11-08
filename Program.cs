@@ -15,6 +15,7 @@ using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities.Users;
 using OpenAcademy.Responses;
+using OpenAcademy.Services.ApplicationServices.TokenService;
 using OpenAcademy.Startup;
 using Scalar.AspNetCore;
 
@@ -137,13 +138,13 @@ builder.Services
         {
             ValidateIssuer = true,
             ValidIssuer = jwtOptions.Issuer,
-            
+
             ValidateAudience = true,
             ValidAudience = jwtOptions.Audience,
-            
+
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
-            
+
             ValidAlgorithms = [jwtOptions.Algorithm],
             ValidateLifetime = true,
             ClockSkew = jwtOptions.ClockSkew,
@@ -164,7 +165,10 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddOpenApi();
 
+// My Services
 builder.Services.AddScoped<RootUserBootstrapper>();
+builder.Services.AddScoped<AbstractRefreshTokenService, RefreshTokenService>();
+builder.Services.AddSingleton<AbstractAccessTokenService, AccessTokenService>();
 
 var app = builder.Build();
 
@@ -196,14 +200,14 @@ using (var scope = app.Services.CreateScope())
                     string.Join("; ", result.Errors.Select(e => e.Description)));
         }
     }
-    
+
     // bootstrapping root
     if (args.Contains("bootstrap-root"))
     {
         Environment.ExitCode = await BootstrapRootCommand.RunAsync(services);
         return;   // exits without starting the web server
     }
-    
+
     var bootstrapper = services.GetRequiredService<RootUserBootstrapper>();
     if (!await bootstrapper.RootExistsAsync())
     {

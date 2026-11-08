@@ -3,28 +3,24 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using OpenAcademy.Configuration;
 using OpenAcademy.Configuration.Options;
 using OpenAcademy.Entities.Users;
 using JwtRegisteredClaimNames = Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames;
 
 namespace OpenAcademy.Services.ApplicationServices.TokenService;
 
-public sealed class AccessTokenService : IAccessTokenService
+public sealed class AccessTokenService : AbstractAccessTokenService
 {
-    private readonly JwtOptions _options;
-
-    public AccessTokenService(IOptions<JwtOptions> options)
+    public AccessTokenService(IOptions<JwtOptions> jwtOptions) : base(jwtOptions)
     {
-        _options = options.Value;
     }
 
-    public string Generate(ApplicationUser user, IEnumerable<string> roles, DateTimeOffset expiresAt)
+    public override string Generate(ApplicationUser user, IEnumerable<string> roles, DateTimeOffset expiresAt)
     {
         var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(_options.SigningKey));
+            Encoding.UTF8.GetBytes(_jwtOptions.SigningKey));
 
-        var credentials = new SigningCredentials(key, _options.Algorithm);
+        var credentials = new SigningCredentials(key, _jwtOptions.Algorithm);
 
         var claims = new List<Claim>
         {
@@ -38,14 +34,14 @@ public sealed class AccessTokenService : IAccessTokenService
         }
 
         var token = new JwtSecurityToken(
-            issuer: _options.Issuer,
-            audience: _options.Audience,
+            issuer: _jwtOptions.Issuer,
+            audience: _jwtOptions.Audience,
             claims: claims,
             notBefore: DateTimeOffset.UtcNow.UtcDateTime,
             expires: expiresAt.UtcDateTime,
             signingCredentials: credentials);
 
-        
+
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

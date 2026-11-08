@@ -1,31 +1,75 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
-using OpenAcademy.Configuration;
 using OpenAcademy.Configuration.Options;
+using OpenAcademy.Entities.Tokens;
+using OpenAcademy.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Runtime.CompilerServices;
 
 namespace OpenAcademy.Services.ApplicationServices.TokenService;
 
-public sealed class RefreshTokenService : IRefreshTokenService
+public sealed class RefreshTokenService : AbstractRefreshTokenService
 {
-    private RefreshTokenOptions _options;
+    private readonly ApplicationDbContext _dbContext;
+    private readonly ILogger<RefreshTokenService> _logger;
 
-    public RefreshTokenService(IOptions<RefreshTokenOptions> options)
+    public RefreshTokenService(
+        ApplicationDbContext dbContext,
+        IOptions<RefreshTokenOptions> refreshTokenOptions,
+        ILogger<RefreshTokenService> logger) : base(refreshTokenOptions)
     {
-        _options = options.Value;
+        _dbContext = dbContext;
+        _logger = logger;
     }
-    
-    public string GeneratePlain()
+
+    public override string GeneratePlain()
     {
         var tokenBytes = RandomNumberGenerator.GetBytes(32);
         return Convert.ToBase64String(tokenBytes);
     }
 
-    public string Hash(string plainToken)
+    public override string Hash(string plainToken)
     {
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(
-            _options.SigningKey));
+            _refreshTokenOptions.SigningKey));
         var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(plainToken));
         return Convert.ToBase64String(hash);
+    }
+
+    public override async Task RevokeFamilyAsync(RefreshToken token)
+    {
+        // lookup by family id and bulk update
+        var tokensToRevoke = await _dbContext.RefreshTokens
+            .Where(rt => rt.FamilyId == token.FamilyId && !rt.IsRevoked)
+            .ExecuteUpdateAsync(setters =>
+                setters
+                    .SetProperty(rt => rt.RevokedAt, DateTimeOffset.UtcNow.UtcDateTime)
+            );
+    }
+
+    public override async Task RotateTokenAsync(RefreshToken oldToken, RefreshToken newToken)
+    {
+        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            try
+            {
+                oldToken.RevokedAt = DateTimeOffset.UtcNow.UtcDateTime;
+
+                _dbContext.RefreshTokens.Update(oldToken);
+                _dbContext.RefreshTokens.Add(newToken);
+
+                await _dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error rotating refresh token for user {UserId}", oldToken.UserId);
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 }
