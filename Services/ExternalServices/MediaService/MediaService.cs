@@ -3,17 +3,10 @@ using System.Diagnostics;
 using System.Text.Json;
 using Amazon.S3;
 using Amazon.S3.Model;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+using ImageMagick;
 using Microsoft.Extensions.Options;
 using OpenAcademy.Configuration;
 using OpenAcademy.Configuration.Options;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
 
 namespace OpenAcademy.Services.ExternalServices.MediaService;
 
@@ -28,6 +21,26 @@ public sealed class MediaService(
 
     // One transcode at a time: keeps a small VPS from falling over. Static because the service is scoped.
     private static readonly SemaphoreSlim TranscodeGate = new(1, 1);
+
+    // Image decode/resize/encode is also CPU and memory heavy. Cap concurrent jobs.
+    private static readonly SemaphoreSlim ImageGate = new(2, 2);
+
+    // Only these sniffed formats are accepted (the decoder is pinned to the sniffed format below).
+    private static readonly HashSet<MagickFormat> AllowedImageFormats =
+    [
+        MagickFormat.Jpeg, MagickFormat.Jpg,
+        MagickFormat.Png, MagickFormat.Png00, MagickFormat.Png8,
+        MagickFormat.Png24, MagickFormat.Png32, MagickFormat.Png48, MagickFormat.Png64,
+    ];
+
+    // Global ImageMagick resource limits: a hostile upload cannot exhaust the host.
+    // Tune to your VPS. Hitting a limit throws MagickResourceLimitErrorException (handled below).
+    static MediaService()
+    {
+        ResourceLimits.Width = 20_000;
+        ResourceLimits.Height = 20_000;
+        ResourceLimits.Memory = 512UL * 1024 * 1024;
+    }
 
     private readonly S3Options _s3 = s3Options.Value;
     private readonly MediaOptions _opt = mediaOptions.Value;
@@ -54,48 +67,74 @@ public sealed class MediaService(
 
         await using var input = file.OpenReadStream();
 
+        // Header-only read: real format and dimensions, no pixel decode.
         // Trust the bytes, not the filename or Content-Type header.
-        IImageFormat? format;
-        try { format = await Image.DetectFormatAsync(input, ct); }
-        catch (UnknownImageFormatException) { format = null; }
-        if (format != JpegFormat.Instance && format != PngFormat.Instance)
+        MagickImageInfo info;
+        try { info = new MagickImageInfo(input); }
+        catch (MagickException)
+        {
+            throw new MediaRejectedException("Unsupported image type. Upload a JPEG or PNG.",
+                StatusCodes.Status415UnsupportedMediaType);
+        }
+
+        if (!AllowedImageFormats.Contains(info.Format))
             throw new MediaRejectedException("Unsupported image type. Upload a JPEG or PNG.",
                 StatusCodes.Status415UnsupportedMediaType);
 
+        if ((long)info.Width * info.Height > _opt.MaxImageMegapixels * 1_000_000L)
+            throw new MediaRejectedException($"Image dimensions are too large (max {_opt.MaxImageMegapixels} megapixels).");
+
         try
         {
-            input.Position = 0;
-            var info = await Image.IdentifyAsync(input, ct);
-            if ((long)info.Width * info.Height > _opt.MaxImageMegapixels * 1_000_000L)
-                throw new MediaRejectedException($"Image dimensions are too large (max {_opt.MaxImageMegapixels} megapixels).");
-
-            input.Position = 0;
-            using var image = await Image.LoadAsync(new DecoderOptions { MaxFrames = 1 }, input, ct);
-
-            // Apply EXIF rotation BEFORE stripping metadata, otherwise phone photos end up sideways.
-            image.Mutate(x => x.AutoOrient());
-            if (image.Width > maxDimension || image.Height > maxDimension)
-                image.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Size = new Size(maxDimension, maxDimension),
-                    Mode = ResizeMode.Max
-                }));
-
-            // Public images also lose GPS/camera data here: important for profile pictures.
-            image.Metadata.ExifProfile = null;
-            image.Metadata.IptcProfile = null;
-            image.Metadata.XmpProfile = null;
-
             await using var webp = new MemoryStream();
-            await image.SaveAsync(webp, new WebpEncoder { Quality = _opt.WebpQuality }, ct);
+
+            await ImageGate.WaitAsync(ct);
+            try
+            {
+                input.Position = 0;
+
+                // Pin the decoder to the sniffed format (no format guessing on untrusted bytes), first frame only.
+                var settings = new MagickReadSettings
+                {
+                    Format = info.Format,
+                    FrameIndex = 0,
+                    FrameCount = 1,
+                };
+
+                using var image = new MagickImage();
+                await image.ReadAsync(input, settings, ct);
+
+                // Apply EXIF rotation BEFORE stripping metadata, otherwise phone photos end up sideways.
+                image.AutoOrient();
+
+                // Greater = true: only ever shrink, never enlarge. Aspect ratio is kept.
+                image.Resize(new MagickGeometry((uint)maxDimension, (uint)maxDimension) { Greater = true });
+
+                // Public images also lose GPS/camera data here: important for profile pictures.
+                // Strip() removes EXIF, IPTC, XMP, ICC and text chunks.
+                image.Strip();
+
+                image.Format = MagickFormat.WebP;
+                image.Quality = (uint)_opt.WebpQuality;
+
+                await image.WriteAsync(webp, ct);
+            }
+            finally { ImageGate.Release(); }
+
             webp.Position = 0;
 
             var key = keyWithoutExtension + ".webp";
             await PutAsync(bucket, key, webp, "image/webp", publicRead, ct);
             return new StoredMedia(key, "image/webp", webp.Length, null);
         }
-        catch (InvalidImageContentException)
+        catch (MagickResourceLimitErrorException ex)
         {
+            logger.LogInformation(ex, "Image rejected by ImageMagick resource limits");
+            throw new MediaRejectedException("The image is too large to process.");
+        }
+        catch (MagickException ex)
+        {
+            logger.LogInformation(ex, "Image could not be decoded");
             throw new MediaRejectedException("The image file is corrupt or unreadable.");
         }
     }
