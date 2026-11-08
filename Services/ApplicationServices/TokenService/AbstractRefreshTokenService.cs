@@ -14,7 +14,8 @@ public abstract class AbstractRefreshTokenService : IGenericCookieToken
 
     abstract public string GeneratePlain();
     abstract public string Hash(string plainToken);
-    abstract public Task RevokeFamilyAsync(RefreshToken token);
+    abstract public Task<int> RevokeFamilyAsync(Guid userId, Guid familyId, CancellationToken cancellationToken = default);
+    abstract public Task<int> RevokeAllForUserAsync(Guid userId, CancellationToken cancellationToken = default);
     abstract public Task RotateTokenAsync(RefreshToken oldToken, RefreshToken newToken);
 
     public string? GetCookie(IRequestCookieCollection cookies)

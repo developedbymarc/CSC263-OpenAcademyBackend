@@ -37,15 +37,25 @@ public sealed class RefreshTokenService : AbstractRefreshTokenService
         return Convert.ToBase64String(hash);
     }
 
-    public override async Task RevokeFamilyAsync(RefreshToken token)
+    public override async Task<int> RevokeAllForUserAsync(Guid userId, CancellationToken ct = default)
     {
-        // lookup by family id and bulk update
-        var tokensToRevoke = await _dbContext.RefreshTokens
-            .Where(rt => rt.FamilyId == token.FamilyId && !rt.IsRevoked)
+        var now = DateTimeOffset.UtcNow;
+        return await _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt > now)
             .ExecuteUpdateAsync(setters =>
                 setters
-                    .SetProperty(rt => rt.RevokedAt, DateTimeOffset.UtcNow.UtcDateTime)
-            );
+                    .SetProperty(rt => rt.RevokedAt, now), ct);
+    }
+
+    // UserId is part of the filter so one user can never revoke another user's family.
+    public override async Task<int> RevokeFamilyAsync(Guid userId, Guid familyId, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return await _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId && rt.FamilyId == familyId && !rt.IsRevoked)
+            .ExecuteUpdateAsync(setters =>
+                setters
+                    .SetProperty(rt => rt.RevokedAt, now), ct);
     }
 
     public override async Task RotateTokenAsync(RefreshToken oldToken, RefreshToken newToken)
