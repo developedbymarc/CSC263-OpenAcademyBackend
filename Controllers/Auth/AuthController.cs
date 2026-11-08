@@ -76,6 +76,9 @@ public class AuthController : ControllerBase
         _linkGenerator = linkGenerator;
     }
 
+    private Guid? GetCurrentUserId() =>
+        Guid.TryParse(_userManager.GetUserId(User), out var id) ? id : null;
+
     [HttpGet("csrf")]
     public ActionResult<ApiResponse<CsrfTokenDto>> GetCsrfToken()
     {
@@ -104,7 +107,7 @@ public class AuthController : ControllerBase
 
         if (oldTokenRecord.IsRevoked || oldTokenRecord.IsExpired)
         {
-            await _refreshTokenService.RevokeFamilyAsync(oldTokenRecord);
+            await _refreshTokenService.RevokeFamilyAsync(oldTokenRecord.Id, oldTokenRecord.FamilyId);
             return Unauthorized(ApiResponse.Failed(message: "Invalid refresh token"));
         }
 
@@ -223,9 +226,6 @@ public class AuthController : ControllerBase
         _refreshTokenService.UnsetCookie(Response.Cookies);
         return Ok(ApiResponse.Succeeded(message: "Signed out successfully"));
     }
-
-    private Guid? GetCurrentUserId() =>
-        Guid.TryParse(_userManager.GetUserId(User), out var id) ? id : null;
 
     [Authorize]
     [HttpPost("signout-all-devices")]
@@ -451,7 +451,7 @@ public class AuthController : ControllerBase
 
             if (oldRefreshTokenRecord is not null)
             {
-                await _refreshTokenService.RevokeFamilyAsync(oldRefreshTokenRecord);
+                await _refreshTokenService.RevokeFamilyAsync(user.Id, oldRefreshTokenRecord.FamilyId);
             }
         }
 
