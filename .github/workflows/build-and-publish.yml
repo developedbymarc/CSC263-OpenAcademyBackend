@@ -31,5 +31,5 @@ jobs:
           file: ./Containerfile
           push: ${{ github.event_name == 'push' }}
           tags: |
-            ghcr.io/developedbymarc/openacademy:latest
-            ghcr.io/developedbymarc/openacademy:${{ github.sha }}
+            ghcr.io/developedbymarc/csc263-openacademybackend:latest
+            ghcr.io/developedbymarc/csc263-openacademybackend:${{ github.sha }}
