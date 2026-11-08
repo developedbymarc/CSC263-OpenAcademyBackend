@@ -13,13 +13,17 @@ RUN dotnet publish "OpenAcademy.csproj" \
     -c $BUILD_CONFIGURATION -r linux-x64 --no-self-contained --no-restore \
     -p:UseAppHost=false -o /app/publish
 
+# ---- ffmpeg ----
+FROM docker.io/mwader/static-ffmpeg:9.0.2-1 AS ffmpeg
+
 # ---- runtime ----
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+COPY --from=mwader/static-ffmpeg:9.0.2-1 /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=mwader/static-ffmpeg:9.0.2-1 /ffprobe /usr/local/bin/ffprobe
 
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true \
-    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true
 
 EXPOSE 8080
 USER $APP_UID

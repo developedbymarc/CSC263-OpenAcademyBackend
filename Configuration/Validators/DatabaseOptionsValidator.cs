@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Options;
 using Npgsql;
+using OpenAcademy.Configuration.Options;
 
-namespace OpenAcademy.Configuration;
+namespace OpenAcademy.Configuration.Validators;
 
 public sealed class DatabaseOptionsValidator : IValidateOptions<DatabaseOptions>
 {

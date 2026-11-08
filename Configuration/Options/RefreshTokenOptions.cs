@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace OpenAcademy.Configuration;
+namespace OpenAcademy.Configuration.Options;
 
 public sealed class RefreshTokenOptions : ICookieNameOptions
 {

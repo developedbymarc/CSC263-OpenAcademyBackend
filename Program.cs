@@ -3,16 +3,18 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenAcademy.Configuration;
+using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities.Users;
+using OpenAcademy.Responses;
+using OpenAcademy.Services.ApplicationServices.TokenService;
 using OpenAcademy.Startup;
 using Scalar.AspNetCore;
 
@@ -21,6 +23,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add extra configuration providers (vaults, etc.) here, BEFORE Build()
 builder.Services.AddAppConfiguration();
+builder.Services.AddMedia();
 
 // NOTE: AddAppDataProtection must come AFTER any extra config providers
 builder.Services.AddAppDataProtection(builder.Configuration);
@@ -57,6 +60,22 @@ builder.Services
     {
         // Accepts both names and numbers when reading (e.g. "Instructor" / 0), writes names
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(entry => entry.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
+
+            return new BadRequestObjectResult(ApiResponse<object>.Failed(
+                "validation_failed",
+                "One or more validation errors occurred.",
+                errors));
+        };
     });
 
 // --- Database ---
@@ -118,13 +137,13 @@ builder.Services
         {
             ValidateIssuer = true,
             ValidIssuer = jwtOptions.Issuer,
-            
+
             ValidateAudience = true,
             ValidAudience = jwtOptions.Audience,
-            
+
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
-            
+
             ValidAlgorithms = [jwtOptions.Algorithm],
             ValidateLifetime = true,
             ClockSkew = jwtOptions.ClockSkew,
@@ -145,9 +164,21 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddOpenApi();
 
+// My Services
 builder.Services.AddScoped<RootUserBootstrapper>();
+builder.Services.AddScoped<AbstractRefreshTokenService, RefreshTokenService>();
+builder.Services.AddSingleton<AbstractAccessTokenService, AccessTokenService>();
 
 var app = builder.Build();
+
+if (args is ["migrate"])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
+        .Database.MigrateAsync();
+    return;
+}
+
 app.Services.GetRequiredService<IStartupValidator>().Validate();
 
 using (var scope = app.Services.CreateScope())
@@ -168,14 +199,14 @@ using (var scope = app.Services.CreateScope())
                     string.Join("; ", result.Errors.Select(e => e.Description)));
         }
     }
-    
+
     // bootstrapping root
     if (args.Contains("bootstrap-root"))
     {
         Environment.ExitCode = await BootstrapRootCommand.RunAsync(services);
         return;   // exits without starting the web server
     }
-    
+
     var bootstrapper = services.GetRequiredService<RootUserBootstrapper>();
     if (!await bootstrapper.RootExistsAsync())
     {
@@ -190,7 +221,6 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

@@ -1,8 +1,9 @@
 // Configuration/Validators/KeyProtectionOptionsValidator.cs
 
 using Microsoft.Extensions.Options;
+using OpenAcademy.Configuration.Options;
 
-namespace OpenAcademy.Configuration;
+namespace OpenAcademy.Configuration.Validators;
 
 public sealed class KeyProtectionOptionsValidator : IValidateOptions<KeyProtectionOptions>
 {

@@ -16,4 +16,10 @@ public static class RoleNames
         Instructor,
         Student
     ];
+
+    public static readonly string[] CanSignUp =
+    [
+        Instructor,
+        Student
+    ];
 }
