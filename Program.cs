@@ -14,6 +14,7 @@ using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities.Users;
 using OpenAcademy.Responses;
+using OpenAcademy.Services.ApplicationServices.EmailTemplateStore;
 using OpenAcademy.Services.ApplicationServices.TokenService;
 using OpenAcademy.Startup;
 using Scalar.AspNetCore;
@@ -168,6 +169,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddScoped<RootUserBootstrapper>();
 builder.Services.AddScoped<AbstractRefreshTokenService, RefreshTokenService>();
 builder.Services.AddSingleton<AbstractAccessTokenService, AccessTokenService>();
+builder.Services.AddSingleton<EmailTemplateStore>();
 
 var app = builder.Build();
 

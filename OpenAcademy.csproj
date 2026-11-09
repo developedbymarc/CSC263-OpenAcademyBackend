@@ -22,11 +22,16 @@
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.18.0" />
+    <PackageReference Include="Scriban" Version="7.6.1" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Data\Seeding\" />
     <Folder Include="Middlewares\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\**\*.template.html" LogicalName="templates/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

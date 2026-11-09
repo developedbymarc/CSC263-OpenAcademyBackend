@@ -1,0 +1,7 @@
+<!-- subject:  -->
+<p>Hello, {{ first_name | html.escape }}!</p>
+<p>You were assigned as {{ role | html.escape }}.</p>
+<p>You can either accept this role and follow with the password reset, or reject it and automatically delete your account:</p>
+<br />
+<a href="{{ acceptance_link | html.escape }}">Accept</a>
+<a href="{{ rejection_link | html.escape }}">Reject</a>

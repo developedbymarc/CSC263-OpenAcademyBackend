@@ -1,0 +1,6 @@
+<!-- subject: Email Confirmation -->
+<p>Hello, {{ first_name | html.escape }}!</p>
+<p>Thank you for registering.</p>
+<p>Please confirm your email by clicking on the link below:</p>
+<br />
+<a href="{{ link | html.escape }}">Confirm Email</a>

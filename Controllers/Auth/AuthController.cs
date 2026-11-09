@@ -18,8 +18,8 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace OpenAcademy.Controllers;
 
-[Route("[controller]")]
 [ApiController]
+[Route("[controller]")]
 public class AuthController : ControllerBase
 {
     // services
@@ -499,6 +499,53 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse.Succeeded(message: "Signed in successfully"));
     }
 
+    // [HttpPost("reset-password-intent")]
+    // public async Task<ActionResult<ApiResponse>> ResetPasswordIntent([FromBody] ResetPasswordIntentDto resetPasswordDto)
+    // {
+    //     var user = await _userManager.FindByEmailAsync(resetPasswordDto.Email);
+    //     if (user is null)
+    //     {
+    //         return BadRequest(ApiResponse.Failed(message: "User doesn't exist"));
+    //     }
+
+    //     var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+    //     var resetLink = _linkGenerator.GetUriByAction(
+    //         httpContext: HttpContext,
+    //         action: nameof(ResetPassword),
+    //         controller: AuthController.ControllerName,
+    //         values: new { token = resetToken, email = user.Email },
+    //         scheme: Request.Scheme
+    //     );
+
+    //     await _emailService.SendTemplatedEmailAsync(
+    //         EEmailTemplate.ResetPassword,
+    //         new { first_name = user.FirstName, link = resetLink },
+    //         user.Email
+    //     );
+
+    //     return Ok(ApiResponse.Succeeded(message: "Password reset email sent"));
+    // }
+
+    // [HttpPost("reset-password")]
+    // public async Task<ActionResult<ApiResponse>> ResetPassword([FromBody] ResetPasswordDto resetPasswordDto)
+    // {
+    //     var user = await _userManager.FindByEmailAsync(resetPasswordDto.Email);
+    //     if (user is null)
+    //     {
+    //         return BadRequest(ApiResponse.Failed(message: "User doesn't exist"));
+    //     }
+
+    //     var resetResult = await _userManager.ResetPasswordAsync(user, resetPasswordDto.Token, resetPasswordDto.NewPassword);
+    //     if (!resetResult.Succeeded)
+    //     {
+    //         return BadRequest(ApiResponse.Failed(
+    //             code: "RESET_PASSWORD",
+    //             message: "Password reset failed",
+    //             details: resetResult.ToDetails())
+    //         );
+    //     }
+    // }
+
     [HttpPost("resend-email-confirmation")]
     public async Task<ActionResult<ApiResponse>> ResendEmailConfirmation([FromBody] ResendEmailConfirmationDto resendEmailConfirmationDto)
     {
@@ -561,18 +608,10 @@ public class AuthController : ControllerBase
             scheme: Request.Scheme
         );
 
-        var emailMessage = new EmailMessage(
-            To: user!.Email!,
-            Subject: "Email Confirmation",
-            Body: $"""
-                <p>Hello, {user.FirstName}!</p>
-                <p>Thank you for registering.</p>
-                <p>Please confirm your email by clicking on the link below:</p>
-                <br />
-                <a href="{link}">{link}</a>
-                """,
-            IsHtml: true
+        await _emailService.SendTemplatedEmailAsync(
+            EEmailTemplate.EmailConfirmation,
+            new { first_name = user.FirstName, link },
+            user.Email!
         );
-        await _emailService.SendEmailAsync(emailMessage);
     }
 }
