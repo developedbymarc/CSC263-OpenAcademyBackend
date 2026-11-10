@@ -1,0 +1,2 @@
+namespace OpenAcademy.Controllers;
+

@@ -518,9 +518,10 @@ public class AuthController : ControllerBase
         if (user is not null)
         {
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var encoded = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var escapedUserId = Uri.EscapeDataString(user.Id.ToString());
             var link =
-                $"{_frontendOptions.Origin}/{ResetPasswordPath}?token={encoded}&userId={Uri.EscapeDataString(user.Id.ToString())}";
+                $"{_frontendOptions.Origin}/{ResetPasswordPath}?token={encodedToken}&userId={escapedUserId}";
 
             await _emailService.SendTemplatedEmailAsync(
                 EEmailTemplate.ResetPassword, new { first_name = user.FirstName, link }, user.Email!);

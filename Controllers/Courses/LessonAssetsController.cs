@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
@@ -18,11 +19,25 @@ namespace OpenAcademy.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/lessons/{lessonId:guid}/assets")]
-public sealed class LessonAssetsController(
-    ApplicationDbContext db,
-    IMediaService media,
-    ILogger<LessonAssetsController> logger) : ControllerBase
+public sealed class LessonAssetsController : ControllerBase
 {
+    // services
+    private readonly ApplicationDbContext _dbContext;
+    private readonly IMediaService _mediaService;
+    
+    // utils
+    private readonly ILogger<LessonAssetsController> _logger;
+
+    public LessonAssetsController(
+        ApplicationDbContext dbContext,
+        IOptions<IMediaService> mediaService,
+        ILogger<LessonAssetsController> logger)
+    {
+        _dbContext = dbContext;
+        _mediaService = mediaService.Value;
+        _logger = logger;
+    }
+    
     // Presigned URLs are bearer credentials: never cache this response.
     [HttpGet]
     [Authorize(Policy = PolicyNames.CanReadCourseContent)]
@@ -30,14 +45,14 @@ public sealed class LessonAssetsController(
     public async Task<ActionResult<ApiResponse<IReadOnlyList<LessonAssetDto>>>> List(
         Guid lessonId, CancellationToken ct)
     {
-        var assets = await db.LessonAssets.AsNoTracking()
+        var assets = await _dbContext.LessonAssets.AsNoTracking()
             .Where(a => a.LessonId == lessonId && a.Status == AssetStatus.Ready)
             .OrderBy(a => a.Order)
             .ToListAsync(ct);
 
         var result = assets.Select(a =>
         {
-            var link = media.CreateDownloadUrl(a.BlobPath);
+            var link = _mediaService.CreateDownloadUrl(a.BlobPath);
             return new LessonAssetDto(a.Id, a.Type, a.ContentType, a.SizeBytes, a.DurationSeconds,
                 a.Order, link.Url, link.ExpiresAt);
         }).ToList();
@@ -51,7 +66,7 @@ public sealed class LessonAssetsController(
     public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadImage(
         Guid lessonId, [FromForm] UploadLessonAssetRequest req,
         CancellationToken ct)
-        => Upload(lessonId, req.File, AssetType.Image, media.StoreImageAsync, ct);
+        => Upload(lessonId, req.File, AssetType.Image, _mediaService.StoreImageAsync, ct);
 
     [HttpPost("videos")]
     [Authorize(Policy = PolicyNames.CanEditCourseContent)]
@@ -60,7 +75,7 @@ public sealed class LessonAssetsController(
     public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadVideo(
         Guid lessonId, [FromForm] UploadLessonAssetRequest req,
         CancellationToken ct)
-        => Upload(lessonId, req.File, AssetType.Video, media.StoreVideoAsync, ct);
+        => Upload(lessonId, req.File, AssetType.Video, _mediaService.StoreVideoAsync, ct);
 
     [HttpDelete("{assetId:guid}")]
     [Authorize(Policy = PolicyNames.CanDeleteCourseContent)]
@@ -68,21 +83,21 @@ public sealed class LessonAssetsController(
         Guid lessonId, Guid assetId, CancellationToken ct)
     {
         // Scoped by lessonId so the policy's lesson is the one the asset really belongs to.
-        var asset = await db.LessonAssets
+        var asset = await _dbContext.LessonAssets
             .FirstOrDefaultAsync(a => a.Id == assetId && a.LessonId == lessonId, ct);
         if (asset is null)
             return NotFound(ApiResponse<object?>.Failed("asset_not_found", "The lesson asset was not found."));
 
-        db.LessonAssets.Remove(asset);
-        await db.SaveChangesAsync(ct);
+        _dbContext.LessonAssets.Remove(asset);
+        await _dbContext.SaveChangesAsync(ct);
 
         try
         {
-            await media.DeleteAsync(asset.BlobPath, ct);
+            await _mediaService.DeleteAsync(asset.BlobPath, ct);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Orphaned blob {Path} after asset delete", asset.BlobPath);
+            _logger.LogWarning(ex, "Orphaned blob {Path} after asset delete", asset.BlobPath);
         }
 
         return Ok(ApiResponse<object?>.Succeeded(null));
@@ -108,7 +123,7 @@ public sealed class LessonAssetsController(
 
         try
         {
-            var nextOrder = (await db.LessonAssets.Where(a => a.LessonId == lessonId)
+            var nextOrder = (await _dbContext.LessonAssets.Where(a => a.LessonId == lessonId)
                 .MaxAsync(a => (int?)a.Order, ct) ?? -1) + 1;
 
             var asset = new LessonAsset
@@ -124,10 +139,10 @@ public sealed class LessonAssetsController(
                 Order = nextOrder,
                 CreatedAt = DateTimeOffset.UtcNow,
             };
-            db.LessonAssets.Add(asset);
-            await db.SaveChangesAsync(ct);
+            _dbContext.LessonAssets.Add(asset);
+            await _dbContext.SaveChangesAsync(ct);
 
-            var link = media.CreateDownloadUrl(asset.BlobPath);
+            var link = _mediaService.CreateDownloadUrl(asset.BlobPath);
             return CreatedAtAction(nameof(List), new { lessonId },
                 ApiResponse<LessonAssetDto>.Succeeded(new LessonAssetDto(
                     asset.Id, asset.Type, asset.ContentType, asset.SizeBytes,
@@ -138,7 +153,7 @@ public sealed class LessonAssetsController(
             // Don't leave a blob behind if the row could not be saved.
             try
             {
-                await media.DeleteAsync(stored.BlobPath, CancellationToken.None);
+                await _mediaService.DeleteAsync(stored.BlobPath, CancellationToken.None);
             }
             catch
             {
