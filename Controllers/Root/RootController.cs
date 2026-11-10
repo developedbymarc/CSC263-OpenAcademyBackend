@@ -16,6 +16,7 @@ using OpenAcademy.Entities;
 using OpenAcademy.Utils;
 using System.Collections.ObjectModel;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.IdentityModel.Protocols.Configuration;
 
 namespace OpenAcademy.Controllers;
 
@@ -27,6 +28,7 @@ public class RootController : ControllerBase
     // services
     private readonly ApplicationDbContext _dbContext;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RoleManager<ApplicationRole> _roleManager;
     private readonly AbstractRefreshTokenService _refreshTokenService;
     private readonly IEmailService _emailService;
 
@@ -39,22 +41,43 @@ public class RootController : ControllerBase
     public RootController(
         ApplicationDbContext dbContext,
         UserManager<ApplicationUser> userManager,
+        RoleManager<ApplicationRole> roleManager,
         AbstractRefreshTokenService refreshTokenService,
         IEmailService emailService,
         ILogger<RootController> logger)
     {
         _dbContext = dbContext;
         _userManager = userManager;
+        _roleManager = roleManager;
         _refreshTokenService = refreshTokenService;
         _emailService = emailService;
         _logger = logger;
     }
 
     [HttpGet("admins")]
-    public async Task<ActionResult<ApiResponse<IEnumerable<ApplicationUser>>>> GetAllAdmins()
+    public async Task<ActionResult<ApiResponse<IEnumerable<GetAllAdminsDto>>>> GetAllAdmins()
     {
-        var admins = await _userManager.GetUsersInRoleAsync(RoleNames.Admin);
-        return Ok(ApiResponse<IEnumerable<ApplicationUser>>.Succeeded(admins));
+        var adminRole = await _dbContext.Roles
+            .FirstOrDefaultAsync(r => r.Name == RoleNames.Admin);
+
+        if (adminRole is null)
+            throw new InvalidConfigurationException("Admin role does not exist.");
+
+        var admins = await _dbContext.UserRoles
+            .Where(ur => ur.RoleId == adminRole.Id)
+            .Join<IdentityUserRole<Guid>, ApplicationUser, Guid, GetAllAdminsDto>(
+                _dbContext.Users.Where(u => u.Status == AccountStatus.Active),
+                ur => ur.UserId,
+                user => user.Id,
+                (ur, user) => new GetAllAdminsDto(
+                    UserId: user.Id,
+                    FirstName: user.FirstName,
+                    LastName: user.LastName,
+                    Email: user.Email!
+                ))
+            .ToListAsync();
+
+        return Ok(ApiResponse<IEnumerable<GetAllAdminsDto>>.Succeeded(admins));
     }
 
     [HttpPost("create-admin")]

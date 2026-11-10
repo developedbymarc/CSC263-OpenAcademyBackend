@@ -12,6 +12,7 @@ using OpenAcademy.Constants;
 using OpenAcademy.Utils;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Protocols.Configuration;
 using OpenAcademy.Entities.Users.RoleProfiles;
 using OpenAcademy.Entities;
 
@@ -78,10 +79,29 @@ public class AdminController : ControllerBase
         Guid.TryParse(_userManager.GetUserId(User), out var id) ? id : null;
 
     [HttpGet("moderators")]
-    public async Task<ActionResult<ApiResponse<IEnumerable<ApplicationUser>>>> GetAllModerators()
+    public async Task<ActionResult<ApiResponse<IEnumerable<GetAllModeratorsDto>>>> GetAllModerators()
     {
-        var moderators = await _userManager.GetUsersInRoleAsync(RoleNames.Moderator);
-        return Ok(ApiResponse<IEnumerable<ApplicationUser>>.Succeeded(moderators));
+        var moderatorRole = await _dbContext.Roles
+            .FirstOrDefaultAsync(r => r.Name == RoleNames.Moderator);
+
+        if (moderatorRole is null)
+            throw new InvalidConfigurationException("Moderator role does not exist.");
+
+        var moderators = await _dbContext.UserRoles
+            .Where(ur => ur.RoleId == moderatorRole.Id)
+            .Join<IdentityUserRole<Guid>, ApplicationUser, Guid, GetAllModeratorsDto>(
+                _dbContext.Users.Where(u => u.Status == AccountStatus.Active),
+                ur => ur.UserId,
+                user => user.Id,
+                (ur, user) => new GetAllModeratorsDto(
+                    UserId: user.Id,
+                    FirstName: user.FirstName,
+                    LastName: user.LastName,
+                    Email: user.Email!
+                ))
+            .ToListAsync();
+
+        return Ok(ApiResponse<IEnumerable<GetAllModeratorsDto>>.Succeeded(moderators));
     }
 
     [HttpPost("create-moderator")]

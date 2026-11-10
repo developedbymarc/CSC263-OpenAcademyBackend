@@ -160,6 +160,7 @@ builder.Services
                 ctx.Token = ctx.Request.Cookies[jwtOptions.CookieName];
                 return Task.CompletedTask;
             },
+            // Reject disabled accounts
             OnTokenValidated = async ctx =>
             {
                 var userIdValue = ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
