@@ -5,5 +5,5 @@ public enum EEmailTemplate
     ResetPassword,
     EmailConfirmation,
     PrivilegedRoleAssignmentNotification,
-    PrivilegedRoleRevocationNotification,
+    AccountDeactivationNotification,
 }

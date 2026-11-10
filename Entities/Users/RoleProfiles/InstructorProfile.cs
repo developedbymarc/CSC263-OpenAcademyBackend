@@ -13,6 +13,8 @@ public class InstructorProfile
     [MaxLength(128)] public string? Headline { get; set; }
     [MaxLength(4000)] public string? Bio { get; set; }
     [MaxLength(512)] public string? Expertise { get; set; }
+    
+    public DateTimeOffset CreatedAt { get; set; }
 
     public ICollection<Course> Courses { get; } = new List<Course>();
 }

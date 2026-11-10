@@ -11,6 +11,9 @@ using OpenAcademy.Data;
 using OpenAcademy.Constants;
 using OpenAcademy.Utils;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using OpenAcademy.Entities.Users.RoleProfiles;
+using OpenAcademy.Entities;
 
 namespace OpenAcademy.Controllers;
 
@@ -90,59 +93,168 @@ public class AdminController : ControllerBase
             return BadRequest(ApiResponse.Failed("Passwords do not match."));
         }
 
-        // Create new moderator user
-        var newModerator = new ApplicationUser
-        {
-            UserName = signUpDto.Email,
-            Email = signUpDto.Email,
-            FirstName = signUpDto.FirstName,
-            LastName = signUpDto.LastName,
-            EmailConfirmed = true
-        };
+        IdentityResult? failure = null;
+        ApplicationUser? createdModerator = null;
 
-        var result = await _userManager.CreateAsync(newModerator, signUpDto.Password);
-        if (!result.Succeeded)
+        try
+        {
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                failure = null;
+                createdModerator = null;
+                _dbContext.ChangeTracker.Clear();
+
+                await using var tx = await _dbContext.Database.BeginTransactionAsync();
+
+                var moderator = new ApplicationUser
+                {
+                    UserName = signUpDto.Email,
+                    Email = signUpDto.Email,
+                    FirstName = signUpDto.FirstName,
+                    LastName = signUpDto.LastName,
+                    EmailConfirmed = true
+                };
+
+                var createResult = await _userManager.CreateAsync(moderator, signUpDto.Password);
+                if (!createResult.Succeeded)
+                {
+                    failure = createResult;
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                var roleResult = await _userManager.AddToRoleAsync(moderator, RoleNames.Moderator);
+                if (!roleResult.Succeeded)
+                {
+                    failure = roleResult;
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                await _dbContext.ModeratorProfiles.AddAsync(new ModeratorProfile
+                    { UserId = moderator.Id, CreatedAt = DateTimeOffset.UtcNow });
+                await _dbContext.SaveChangesAsync();
+
+                await tx.CommitAsync();
+                createdModerator = moderator;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Moderator creation failed unexpectedly");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                ApiResponse.Failed(
+                    code: "CREATE_MODERATOR",
+                    message: "Something went wrong while creating the moderator user",
+                    details: failure?.ToDetails()
+                )
+            );
+        }
+
+        if (failure is not null)
         {
             return BadRequest(ApiResponse.Failed(
                 code: "CREATE_MODERATOR",
                 message: "Could not create a new moderator user",
-                details: result.ToDetails())
+                details: failure.ToDetails())
             );
         }
 
-        // Assign moderator role
-        await _userManager.AddToRoleAsync(newModerator, RoleNames.Moderator);
         await _emailService.SendTemplatedEmailAsync(
             EEmailTemplate.PrivilegedRoleAssignmentNotification,
-            new { first_name = newModerator.FirstName, role = RoleNames.Moderator },
-            newModerator.Email);
-        _logger.LogInformation("Moderator user created successfully: {ModeratorEmail}", newModerator.Email);
+            new { first_name = createdModerator!.FirstName, role = RoleNames.Moderator },
+            createdModerator.Email!);
+        _logger.LogInformation("Moderator user created successfully: {ModeratorEmail}", createdModerator.Email);
         return Ok(ApiResponse.Succeeded("Moderator user created successfully."));
     }
 
     [HttpDelete("delete-moderator/{moderatorId:guid}")]
     public async Task<ActionResult<ApiResponse>> DeleteModerator([FromRoute] Guid moderatorId)
     {
-        var moderatorUser = await _userManager.FindByIdAsync(moderatorId.ToString());
-        if (moderatorUser == null)
+        IdentityResult? failure = null;
+        ApplicationUser? disabledModerator = null;
+
+        try
+        {
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                failure = null;
+                disabledModerator = null;
+                _dbContext.ChangeTracker.Clear();
+
+                await using var tx = await _dbContext.Database.BeginTransactionAsync();
+
+                var moderator = await _userManager.FindByIdAsync(moderatorId.ToString());
+                if (moderator is null)
+                {
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                moderator.Status = AccountStatus.Disabled;
+                moderator.StatusUpdatedAt = now;
+                moderator.StatusUpdatedReason = "Account disabled by administrator.";
+                moderator.LockoutEnabled = true;
+                moderator.LockoutEnd = DateTimeOffset.MaxValue;
+
+                var updateResult = await _userManager.UpdateAsync(moderator);
+                if (!updateResult.Succeeded)
+                {
+                    failure = updateResult;
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                await _refreshTokenService.RevokeAllForUserAsync(moderator.Id);
+
+                await tx.CommitAsync();
+                disabledModerator = moderator;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Moderator deactivation failed unexpectedly");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                ApiResponse.Failed(
+                    code: "DELETE_MODERATOR",
+                    message: "Something went wrong while disabling the moderator user",
+                    details: failure?.ToDetails()
+                )
+            );
+        }
+
+        if (disabledModerator is null && failure is null)
         {
             return NotFound(ApiResponse.Failed("Moderator user not found."));
         }
 
-        var result = await _userManager.DeleteAsync(moderatorUser);
-        if (!result.Succeeded)
+        if (failure is not null)
         {
             return BadRequest(ApiResponse.Failed(
                 code: "DELETE_MODERATOR",
-                message: "Could not delete the moderator user",
-                details: result.ToDetails())
+                message: "Could not disable the moderator user",
+                details: failure.ToDetails())
             );
         }
-        await _emailService.SendTemplatedEmailAsync(
-            EEmailTemplate.PrivilegedRoleRevocationNotification,
-            new { first_name = moderatorUser.FirstName, role = RoleNames.Moderator },
-            moderatorUser.Email!);
-        _logger.LogInformation("Moderator user deleted successfully: {ModeratorEmail}", moderatorUser.Email);
-        return Ok(ApiResponse.Succeeded("Moderator user deleted successfully."));
+
+        try
+        {
+            await _emailService.SendTemplatedEmailAsync(
+                EEmailTemplate.AccountDeactivationNotification,
+                new { first_name = disabledModerator!.FirstName },
+                disabledModerator.Email!);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not send deactivation notification for user {UserId}", disabledModerator!.Id);
+        }
+
+        _logger.LogInformation("Moderator user disabled successfully: {ModeratorEmail}", disabledModerator!.Email);
+        return Ok(ApiResponse.Succeeded("Moderator user disabled successfully."));
     }
 }

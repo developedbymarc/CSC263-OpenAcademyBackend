@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -158,6 +159,28 @@ builder.Services
             {
                 ctx.Token = ctx.Request.Cookies[jwtOptions.CookieName];
                 return Task.CompletedTask;
+            },
+            OnTokenValidated = async ctx =>
+            {
+                var userIdValue = ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                                  ?? ctx.Principal?.FindFirst("sub")?.Value;
+                if (!Guid.TryParse(userIdValue, out var userId))
+                {
+                    ctx.Fail("The token does not identify a valid user.");
+                    return;
+                }
+
+                var dbContext = ctx.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                var now = DateTimeOffset.UtcNow;
+                var accountIsEnabled = await dbContext.Users.AnyAsync(user =>
+                    user.Id == userId &&
+                    user.Status != OpenAcademy.Entities.AccountStatus.Disabled &&
+                    (!user.LockoutEnabled || user.LockoutEnd == null || user.LockoutEnd <= now));
+
+                if (!accountIsEnabled)
+                {
+                    ctx.Fail("The account is disabled or locked.");
+                }
             },
         };
     });

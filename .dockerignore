@@ -45,5 +45,6 @@
 **/npm-debug.log
 **/*.tar
 **/*.tar.gz
+**/docs
 LICENSE
 README.md

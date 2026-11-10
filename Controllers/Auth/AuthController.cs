@@ -15,6 +15,7 @@ using OpenAcademy.Entities.Users.RoleProfiles;
 using OpenAcademy.Utils;
 using System.Collections.ObjectModel;
 using Microsoft.AspNetCore.Authorization;
+using OpenAcademy.Entities;
 
 namespace OpenAcademy.Controllers;
 
@@ -112,9 +113,10 @@ public class AuthController : ControllerBase
         }
 
         var refreshUser = oldTokenRecord.User;
-        if (refreshUser.LockoutEnd.HasValue && refreshUser.LockoutEnd > DateTimeOffset.UtcNow)
+        if (refreshUser.Status == AccountStatus.Disabled ||
+            (refreshUser.LockoutEnd.HasValue && refreshUser.LockoutEnd > DateTimeOffset.UtcNow))
         {
-            return Unauthorized(ApiResponse.Failed(message: "Account suspended or banned"));
+            return Unauthorized(ApiResponse.Failed(message: "Account disabled or locked"));
         }
 
         // ---- issuing new tokes ----
@@ -224,6 +226,7 @@ public class AuthController : ControllerBase
                 await _refreshTokenService.RevokeFamilyAsync(userId, refreshTokenRecord.Id);
             }
         }
+        
         _accessTokenService.UnsetCookie(Response.Cookies);
         _refreshTokenService.UnsetCookie(Response.Cookies);
         return Ok(ApiResponse.Succeeded(message: "Signed out successfully"));
@@ -336,7 +339,6 @@ public class AuthController : ControllerBase
                     await tx.RollbackAsync();
                     return;
                 }
-                ;
 
                 var roleResult = await _userManager.AddToRoleAsync(user, signUpDto.Role);
                 if (!roleResult.Succeeded)
@@ -364,7 +366,7 @@ public class AuthController : ControllerBase
 
                     default:
                         {
-                            _logger.LogCritical("Unsupported role: {Role}", signUpDto.Role);
+                            _logger.LogWarning("Unsupported role: {Role}", signUpDto.Role);
                             throw new ArgumentOutOfRangeException(
                                 nameof(signUpDto), signUpDto.Role, "Unsupported role.");
                         }
@@ -394,7 +396,7 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse.Failed(
                 code: "SIGNUP",
                 message: "Something went wrong while creating your account",
-                details: failure?.ToDetails())
+                details: failure.ToDetails())
             );
         }
 
@@ -416,7 +418,7 @@ public class AuthController : ControllerBase
                     message: "User registered successfully, but email confirmation failed to send",
                     details: new ReadOnlyDictionary<string, string[]>(new Dictionary<string, string[]>
                     {
-                       { ex.Source is null ? "error" : ex.Source, [ex.Message] }
+                       { ex.Source ?? "error", [ex.Message] }
                     }))
             );
         }
@@ -429,6 +431,11 @@ public class AuthController : ControllerBase
         if (user is null)
         {
             return Unauthorized(ApiResponse.Failed(message: "User doesn't exist"));
+        }
+
+        if (user.Status == AccountStatus.Disabled)
+        {
+            return Unauthorized(ApiResponse.Failed(message: "Account disabled"));
         }
 
         if (!await _signInManager.CanSignInAsync(user))
@@ -608,7 +615,7 @@ public class AuthController : ControllerBase
             values: new EmailConfirmationDto(user!.Id.ToString(), Uri.EscapeDataString(token)),
             scheme: Request.Scheme
         );
-        
+
         await _emailService.SendTemplatedEmailAsync(
             EEmailTemplate.EmailConfirmation,
             new { first_name = user.FirstName, link },

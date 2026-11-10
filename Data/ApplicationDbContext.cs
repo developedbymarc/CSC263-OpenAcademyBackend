@@ -55,7 +55,6 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Ap
         builder.Entity<ApplicationUser>(b =>
         {
             b.Property(u => u.Id).ValueGeneratedNever(); // assigned in the User constructor (Guid.NewGuid())
-            b.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
             b.Property(u => u.Status).HasConversion<string>().HasMaxLength(32);
         });
 
@@ -82,7 +81,6 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Ap
             b.HasOne(p => p.User).WithOne(u => u.ModeratorProfile)
                 .HasForeignKey<ModeratorProfile>(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-            b.Property(p => p.CreatedAt).HasDefaultValueSql("now()");
         });
 
         builder.Entity<AdminProfile>(b =>
@@ -91,7 +89,6 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Ap
             b.HasOne(p => p.User).WithOne(u => u.AdminProfile)
                 .HasForeignKey<AdminProfile>(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-            b.Property(p => p.CreatedAt).HasDefaultValueSql("now()");
         });
 
         builder.Entity<RefreshToken>(b =>

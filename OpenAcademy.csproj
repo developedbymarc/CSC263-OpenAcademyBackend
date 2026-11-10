@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Templates\**\*.template.html" LogicalName="templates/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="EmailTemplates\**\*.template.html" LogicalName="templates/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

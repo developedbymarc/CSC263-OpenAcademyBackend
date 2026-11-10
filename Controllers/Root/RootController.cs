@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenAcademy.Data;
 using OpenAcademy.Constants;
 using OpenAcademy.Entities.Users.RoleProfiles;
+using OpenAcademy.Entities;
 using OpenAcademy.Utils;
 using System.Collections.ObjectModel;
 using Microsoft.AspNetCore.Authorization;
@@ -24,7 +25,9 @@ namespace OpenAcademy.Controllers;
 public class RootController : ControllerBase
 {
     // services
+    private readonly ApplicationDbContext _dbContext;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly AbstractRefreshTokenService _refreshTokenService;
     private readonly IEmailService _emailService;
 
     // utils
@@ -34,11 +37,15 @@ public class RootController : ControllerBase
     private const string ControllerName = "Root";
 
     public RootController(
+        ApplicationDbContext dbContext,
         UserManager<ApplicationUser> userManager,
+        AbstractRefreshTokenService refreshTokenService,
         IEmailService emailService,
         ILogger<RootController> logger)
     {
+        _dbContext = dbContext;
         _userManager = userManager;
+        _refreshTokenService = refreshTokenService;
         _emailService = emailService;
         _logger = logger;
     }
@@ -59,59 +66,188 @@ public class RootController : ControllerBase
             return BadRequest(ApiResponse.Failed("Passwords do not match."));
         }
 
-        // Create new admin user
-        var newAdmin = new ApplicationUser
-        {
-            UserName = signUpDto.Email,
-            Email = signUpDto.Email,
-            FirstName = signUpDto.FirstName,
-            LastName = signUpDto.LastName,
-            EmailConfirmed = true
-        };
+        IdentityResult? failure = null;
+        ApplicationUser? createdAdmin = null;
 
-        var result = await _userManager.CreateAsync(newAdmin, signUpDto.Password);
-        if (!result.Succeeded)
+        try
+        {
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                failure = null;
+                createdAdmin = null;
+                _dbContext.ChangeTracker.Clear();
+
+                await using var tx = await _dbContext.Database.BeginTransactionAsync();
+
+                // Create new admin user
+                var admin = new ApplicationUser
+                {
+                    UserName = signUpDto.Email,
+                    Email = signUpDto.Email,
+                    FirstName = signUpDto.FirstName,
+                    LastName = signUpDto.LastName,
+                    EmailConfirmed = true
+                };
+
+                var createResult = await _userManager.CreateAsync(admin, signUpDto.Password);
+                if (!createResult.Succeeded)
+                {
+                    failure = createResult;
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                var roleResult = await _userManager.AddToRoleAsync(admin, RoleNames.Admin);
+                if (!roleResult.Succeeded)
+                {
+                    failure = roleResult;
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                await _dbContext.AdminProfiles.AddAsync(new AdminProfile()
+                    { UserId = admin.Id, CreatedAt = DateTimeOffset.UtcNow });
+                await _dbContext.SaveChangesAsync();
+
+                await tx.CommitAsync();
+                createdAdmin = admin;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Admin creation failed unexpectedly");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                ApiResponse.Failed(
+                    code: "CREATE_ADMIN",
+                    message: "Something went wrong while creating the admin user",
+                    details: failure?.ToDetails()
+                )
+            );
+        }
+
+        if (failure is not null)
         {
             return BadRequest(ApiResponse.Failed(
                 code: "CREATE_ADMIN",
                 message: "Could not create a new admin user",
-                details: result.ToDetails())
+                details: failure.ToDetails())
             );
         }
 
-        // Assign admin role
-        await _userManager.AddToRoleAsync(newAdmin, RoleNames.Admin);
-        await _emailService.SendTemplatedEmailAsync(
-            EEmailTemplate.PrivilegedRoleAssignmentNotification,
-            new { first_name = newAdmin.FirstName, role = RoleNames.Admin },
-            newAdmin.Email);
-        _logger.LogInformation("Admin user created successfully: {AdminEmail}", newAdmin.Email);
-        return Ok(ApiResponse.Succeeded("Admin user created successfully."));
+        try
+        {
+            await _emailService.SendTemplatedEmailAsync(
+                EEmailTemplate.PrivilegedRoleAssignmentNotification,
+                new { first_name = createdAdmin!.FirstName, role = RoleNames.Admin },
+                createdAdmin.Email!);
+
+            _logger.LogInformation("Admin user created successfully: {AdminEmail}", createdAdmin.Email);
+            return StatusCode(StatusCodes.Status201Created,
+                ApiResponse.Succeeded("Admin user created successfully.")
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not send email notification for user {UserId}", createdAdmin!.Id);
+            return StatusCode(StatusCodes.Status201Created,
+                ApiResponse.Failed(
+                    code: "EMAIL_NOTIFICATION",
+                    message: "Admin registered successfully, but email notification failed to send",
+                    details: new ReadOnlyDictionary<string, string[]>(new Dictionary<string, string[]>
+                    {
+                        { ex.Source ?? "error", [ex.Message] }
+                    }))
+            );
+        }
     }
 
     [HttpDelete("delete-admin/{adminId:guid}")]
     public async Task<ActionResult<ApiResponse>> DeleteAdmin([FromRoute] Guid adminId)
     {
-        var adminUser = await _userManager.FindByIdAsync(adminId.ToString());
-        if (adminUser == null)
+        IdentityResult? failure = null;
+        ApplicationUser? disabledAdmin = null;
+
+        try
+        {
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                failure = null;
+                disabledAdmin = null;
+                _dbContext.ChangeTracker.Clear();
+
+                await using var tx = await _dbContext.Database.BeginTransactionAsync();
+
+                var admin = await _userManager.FindByIdAsync(adminId.ToString());
+                if (admin is null)
+                {
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                admin.Status = AccountStatus.Disabled;
+                admin.StatusUpdatedAt = now;
+                admin.StatusUpdatedReason = "Account disabled by root administrator.";
+                admin.LockoutEnabled = true;
+                admin.LockoutEnd = DateTimeOffset.MaxValue;
+
+                var updateResult = await _userManager.UpdateAsync(admin);
+                if (!updateResult.Succeeded)
+                {
+                    failure = updateResult;
+                    await tx.RollbackAsync();
+                    return;
+                }
+
+                await _refreshTokenService.RevokeAllForUserAsync(admin.Id);
+
+                await tx.CommitAsync();
+                disabledAdmin = admin;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Admin deactivation failed unexpectedly");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                ApiResponse.Failed(
+                    code: "DELETE_ADMIN",
+                    message: "Something went wrong while disabling the admin user",
+                    details: failure?.ToDetails()
+                )
+            );
+        }
+
+        if (disabledAdmin is null && failure is null)
         {
             return NotFound(ApiResponse.Failed("Admin user not found."));
         }
 
-        var result = await _userManager.DeleteAsync(adminUser);
-        if (!result.Succeeded)
+        if (failure is not null)
         {
             return BadRequest(ApiResponse.Failed(
                 code: "DELETE_ADMIN",
-                message: "Could not delete the admin user",
-                details: result.ToDetails())
+                message: "Could not disable the admin user",
+                details: failure.ToDetails())
             );
         }
-        await _emailService.SendTemplatedEmailAsync(
-            EEmailTemplate.PrivilegedRoleRevocationNotification,
-            new { first_name = adminUser.FirstName, role = RoleNames.Admin },
-            adminUser.Email!);
-        _logger.LogInformation("Admin user deleted successfully: {AdminEmail}", adminUser.Email);
-        return Ok(ApiResponse.Succeeded("Admin user deleted successfully."));
+
+        try
+        {
+            await _emailService.SendTemplatedEmailAsync(
+                EEmailTemplate.AccountDeactivationNotification,
+                new { first_name = disabledAdmin!.FirstName },
+                disabledAdmin.Email!);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not send deactivation notification for user {UserId}", disabledAdmin!.Id);
+        }
+
+        _logger.LogInformation("Admin user disabled successfully: {AdminEmail}", disabledAdmin!.Email);
+        return Ok(ApiResponse.Succeeded("Admin user disabled successfully."));
     }
 }
