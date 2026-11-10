@@ -14,7 +14,9 @@ using OpenAcademy.Constants;
 using OpenAcademy.Entities.Users.RoleProfiles;
 using OpenAcademy.Utils;
 using System.Collections.ObjectModel;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.WebUtilities;
 using OpenAcademy.Entities;
 
 namespace OpenAcademy.Controllers;
@@ -44,7 +46,7 @@ public class AuthController : ControllerBase
 
     // local constants
     private const string ControllerName = "Auth";
-    private const string ConfirmEmailPath = "/confirm-email";
+    private const string ResetPasswordPath = "/reset-password";
     private const string SignInPath = "/sign-in";
 
     public AuthController(
@@ -84,7 +86,9 @@ public class AuthController : ControllerBase
     public ActionResult<ApiResponse<CsrfTokenDto>> GetCsrfToken()
     {
         var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
-        return Ok(ApiResponse<CsrfTokenDto>.Succeeded(new CsrfTokenDto(tokens.RequestToken)));
+        return Ok(ApiResponse<CsrfTokenDto>.Succeeded(new CsrfTokenDto(
+            RequestToken: tokens.RequestToken))
+        );
     }
 
     [HttpPost("refresh")]
@@ -204,7 +208,7 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse<IEnumerable<DeviceSessionDto>>.Succeeded(activeSessions));
     }
 
-    #pragma warning disable
+#pragma warning disable
     [Authorize]
     [HttpPost("signout")]
     public async Task<ActionResult<ApiResponse>> SignOut()
@@ -226,12 +230,12 @@ public class AuthController : ControllerBase
                 await _refreshTokenService.RevokeFamilyAsync(userId, refreshTokenRecord.Id);
             }
         }
-        
+
         _accessTokenService.UnsetCookie(Response.Cookies);
         _refreshTokenService.UnsetCookie(Response.Cookies);
         return Ok(ApiResponse.Succeeded(message: "Signed out successfully"));
     }
-    #pragma warning restore
+#pragma warning restore
 
     [Authorize]
     [HttpPost("signout-all-devices")]
@@ -329,7 +333,7 @@ public class AuthController : ControllerBase
                     LastName = signUpDto.LastName,
                     Email = signUpDto.Email,
                     CreatedAt = DateTimeOffset.UtcNow,
-                    Status = Entities.AccountStatus.Active,
+                    Status = AccountStatus.Active,
                 };
 
                 var createResult = await _userManager.CreateAsync(user, signUpDto.Password);
@@ -351,25 +355,25 @@ public class AuthController : ControllerBase
                 switch (signUpDto.Role)
                 {
                     case RoleNames.Instructor:
-                        {
-                            await _dbContext.InstructorProfiles.AddAsync(
-                                new InstructorProfile { UserId = user.Id });
-                            break;
-                        }
+                    {
+                        await _dbContext.InstructorProfiles.AddAsync(
+                            new InstructorProfile { UserId = user.Id });
+                        break;
+                    }
 
                     case RoleNames.Student:
-                        {
-                            await _dbContext.StudentProfiles.AddAsync(
-                                new StudentProfile { UserId = user.Id });
-                            break;
-                        }
+                    {
+                        await _dbContext.StudentProfiles.AddAsync(
+                            new StudentProfile { UserId = user.Id });
+                        break;
+                    }
 
                     default:
-                        {
-                            _logger.LogWarning("Unsupported role: {Role}", signUpDto.Role);
-                            throw new ArgumentOutOfRangeException(
-                                nameof(signUpDto), signUpDto.Role, "Unsupported role.");
-                        }
+                    {
+                        _logger.LogWarning("Unsupported role: {Role}", signUpDto.Role);
+                        throw new ArgumentOutOfRangeException(
+                            nameof(signUpDto), signUpDto.Role, "Unsupported role.");
+                    }
                 }
 
                 await _dbContext.SaveChangesAsync();
@@ -418,7 +422,7 @@ public class AuthController : ControllerBase
                     message: "User registered successfully, but email confirmation failed to send",
                     details: new ReadOnlyDictionary<string, string[]>(new Dictionary<string, string[]>
                     {
-                       { ex.Source ?? "error", [ex.Message] }
+                        { ex.Source ?? "error", [ex.Message] }
                     }))
             );
         }
@@ -454,9 +458,8 @@ public class AuthController : ControllerBase
         {
             var oldRefreshTokenHash = _refreshTokenService.Hash(oldRefreshToken);
             var oldRefreshTokenRecord = await _dbContext.RefreshTokens
-                .FirstOrDefaultAsync(
-                    rt => rt.TokenHash == oldRefreshTokenHash
-                    && !rt.IsRevoked
+                .FirstOrDefaultAsync(rt => rt.TokenHash == oldRefreshTokenHash
+                                           && !rt.IsRevoked
                 );
 
             if (oldRefreshTokenRecord is not null)
@@ -507,55 +510,103 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse.Succeeded(message: "Signed in successfully"));
     }
 
-    // [HttpPost("reset-password-intent")]
-    // public async Task<ActionResult<ApiResponse>> ResetPasswordIntent([FromBody] ResetPasswordIntentDto resetPasswordDto)
-    // {
-    //     var user = await _userManager.FindByEmailAsync(resetPasswordDto.Email);
-    //     if (user is null)
-    //     {
-    //         return BadRequest(ApiResponse.Failed(message: "User doesn't exist"));
-    //     }
+    [HttpPost("reset-password-intent")]
+    public async Task<ActionResult<ApiResponse>> ResetPasswordIntent(
+        [FromBody] ResetPasswordIntentDto resetPasswordIntentDto)
+    {
+        var user = await _userManager.FindByEmailAsync(resetPasswordIntentDto.Email);
+        if (user is not null)
+        {
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encoded = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var link =
+                $"{_frontendOptions.Origin}/{ResetPasswordPath}?token={encoded}&userId={Uri.EscapeDataString(user.Id.ToString())}";
 
-    //     var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
-    //     var resetLink = _linkGenerator.GetUriByAction(
-    //         httpContext: HttpContext,
-    //         action: nameof(ResetPassword),
-    //         controller: AuthController.ControllerName,
-    //         values: new { token = resetToken, email = user.Email },
-    //         scheme: Request.Scheme
-    //     );
+            await _emailService.SendTemplatedEmailAsync(
+                EEmailTemplate.ResetPassword, new { first_name = user.FirstName, link }, user.Email!);
+        }
 
-    //     await _emailService.SendTemplatedEmailAsync(
-    //         EEmailTemplate.ResetPassword,
-    //         new { first_name = user.FirstName, link = resetLink },
-    //         user.Email
-    //     );
+        // Same answer whether the account exists or not.
+        return Ok(ApiResponse.Succeeded(message: "If an account exists for that email, a reset link has been sent."));
+    }
 
-    //     return Ok(ApiResponse.Succeeded(message: "Password reset email sent"));
-    // }
+    [HttpPost("reset-password")]
+    public async Task<ActionResult<ApiResponse>> ResetPassword([FromBody] ResetPasswordDto resetPasswordDto)
+    {
+        if (resetPasswordDto.NewPassword != resetPasswordDto.ConfirmedNewPassword)
+        {
+            return BadRequest(ApiResponse.Failed(
+                code: "RESET_PASSWORD",
+                message: "Passwords do not match")
+            );
+        }
 
-    // [HttpPost("reset-password")]
-    // public async Task<ActionResult<ApiResponse>> ResetPassword([FromBody] ResetPasswordDto resetPasswordDto)
-    // {
-    //     var user = await _userManager.FindByEmailAsync(resetPasswordDto.Email);
-    //     if (user is null)
-    //     {
-    //         return BadRequest(ApiResponse.Failed(message: "User doesn't exist"));
-    //     }
+        string token;
+        try
+        {
+            token = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(resetPasswordDto.Token));
+        }
+        catch (FormatException)
+        {
+            return BadRequest(ApiResponse.Failed(
+                code: "RESET_LINK_INVALID",
+                message: "This reset link is invalid or has expired.")
+            );
+        }
 
-    //     var resetResult = await _userManager.ResetPasswordAsync(user, resetPasswordDto.Token, resetPasswordDto.NewPassword);
-    //     if (!resetResult.Succeeded)
-    //     {
-    //         return BadRequest(ApiResponse.Failed(
-    //             code: "RESET_PASSWORD",
-    //             message: "Password reset failed",
-    //             details: resetResult.ToDetails())
-    //         );
-    //     }
-    // }
+        var user = await _userManager.FindByIdAsync(resetPasswordDto.UserId.ToString());
+        if (user is null)
+        {
+            return BadRequest(ApiResponse.Failed(
+                code: "RESET_LINK_INVALID",
+                message: "This reset link is invalid or has expired.")
+            );
+        }
+
+        var result = await _userManager.ResetPasswordAsync(user, token, resetPasswordDto.NewPassword);
+        if (!result.Succeeded)
+        {
+            if (result.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.InvalidToken)))
+            {
+                return BadRequest(ApiResponse.Failed(
+                    code: "RESET_LINK_INVALID",
+                    message: "This reset link is invalid or has expired.")
+                );
+            }
+
+            return BadRequest(ApiResponse.Failed(
+                code: "RESET_PASSWORD",
+                message: "Password does not meet requirements",
+                details: result.ToDetails())
+            );
+        }
+
+        await _userManager.ResetAccessFailedCountAsync(user);
+        await _refreshTokenService.RevokeAllForUserAsync(user.Id);
+        try
+        {
+            await _emailService.SendTemplatedEmailAsync(
+                EEmailTemplate.PasswordHasBeenReset,
+                new
+                {
+                    first_name = user.FirstName,
+                },
+                user.Email!);
+        }
+        catch (Exception)
+        {
+            _logger.LogError(
+                "Could not send {EmailTemplate} email to user {UserId}",
+                nameof(EEmailTemplate.PasswordHasBeenReset),
+                user.Id);
+        }
+
+        return Ok(ApiResponse.Succeeded(message: "Password updated"));
+    }
 
     [HttpPost("resend-email-confirmation")]
-    public async Task<ActionResult<ApiResponse>> ResendEmailConfirmation([FromBody] ResendEmailConfirmationDto resendEmailConfirmationDto)
+    public async Task<ActionResult<ApiResponse>> ResendEmailConfirmation(
+        [FromBody] ResendEmailConfirmationDto resendEmailConfirmationDto)
     {
         var user = await _userManager.FindByEmailAsync(resendEmailConfirmationDto.Email);
         if (user is null)
@@ -570,7 +621,7 @@ public class AuthController : ControllerBase
 
         try
         {
-            await SendConfirmationEmailAsync(user!);
+            await SendConfirmationEmailAsync(user);
             return Ok(ApiResponse.Succeeded(message: "User registered successfully"));
         }
         catch (Exception ex)
@@ -580,7 +631,7 @@ public class AuthController : ControllerBase
                 message: "Email confirmation failed to send",
                 details: new ReadOnlyDictionary<string, string[]>(new Dictionary<string, string[]>
                 {
-                   { ex.Source is null ? "error" : ex.Source, [ex.Message] }
+                    { ex.Source ?? "error", [ex.Message] }
                 })));
         }
     }
@@ -607,12 +658,12 @@ public class AuthController : ControllerBase
 
     private async Task SendConfirmationEmailAsync(ApplicationUser user)
     {
-        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user!);
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         var link = _linkGenerator.GetUriByAction(
             httpContext: HttpContext,
             action: nameof(ConfirmEmail),
             controller: AuthController.ControllerName,
-            values: new EmailConfirmationDto(user!.Id.ToString(), Uri.EscapeDataString(token)),
+            values: new EmailConfirmationDto(user.Id.ToString(), Uri.EscapeDataString(token)),
             scheme: Request.Scheme
         );
 
