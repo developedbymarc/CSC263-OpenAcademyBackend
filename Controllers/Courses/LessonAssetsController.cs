@@ -25,7 +25,7 @@ public sealed class LessonAssetsController(
 {
     // Presigned URLs are bearer credentials: never cache this response.
     [HttpGet]
-    [Authorize(Policy = PolicyNames.CanReadLesson)]
+    [Authorize(Policy = PolicyNames.CanReadCourseContent)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<LessonAssetDto>>>> List(
         Guid lessonId, CancellationToken ct)
@@ -45,7 +45,7 @@ public sealed class LessonAssetsController(
     }
 
     [HttpPost("images")]
-    [Authorize(Policy = PolicyNames.CanEditLesson)]
+    [Authorize(Policy = PolicyNames.CanEditCourseContent)]
     [RequestSizeLimit(MediaLimits.ImageCeilingBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MediaLimits.ImageCeilingBytes + 1024 * 1024)]
     public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadImage(
@@ -54,7 +54,7 @@ public sealed class LessonAssetsController(
         => Upload(lessonId, req.File, AssetType.Image, media.StoreImageAsync, ct);
 
     [HttpPost("videos")]
-    [Authorize(Policy = PolicyNames.CanEditLesson)]
+    [Authorize(Policy = PolicyNames.CanEditCourseContent)]
     [RequestSizeLimit(MediaLimits.VideoCeilingBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MediaLimits.VideoCeilingBytes + 1024 * 1024)]
     public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadVideo(
@@ -63,7 +63,7 @@ public sealed class LessonAssetsController(
         => Upload(lessonId, req.File, AssetType.Video, media.StoreVideoAsync, ct);
 
     [HttpDelete("{assetId:guid}")]
-    [Authorize(Policy = PolicyNames.CanEditLesson)]
+    [Authorize(Policy = PolicyNames.CanDeleteCourseContent)]
     public async Task<ActionResult<ApiResponse<object?>>> Delete(
         Guid lessonId, Guid assetId, CancellationToken ct)
     {

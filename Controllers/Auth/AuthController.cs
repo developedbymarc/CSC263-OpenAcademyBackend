@@ -165,6 +165,7 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse.Succeeded(message: "Session refreshed"));
     }
 
+    [Authorize]
     [HttpPost("devices-signed-in")]
     public async Task<ActionResult<ApiResponse<IEnumerable<DeviceSessionDto>>>> GetDevicesSignedIn()
     {
@@ -607,7 +608,7 @@ public class AuthController : ControllerBase
             values: new EmailConfirmationDto(user!.Id.ToString(), Uri.EscapeDataString(token)),
             scheme: Request.Scheme
         );
-
+        
         await _emailService.SendTemplatedEmailAsync(
             EEmailTemplate.EmailConfirmation,
             new { first_name = user.FirstName, link },

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using OpenAcademy.Authorization;
 using OpenAcademy.Configuration;
 using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
@@ -161,8 +162,11 @@ builder.Services
         };
     });
 
+// Authz and policies
 builder.Services.AddAuthorization();
+builder.Services.AddCourseAccessPolicies();
 
+// API docs
 builder.Services.AddOpenApi();
 
 // My Services

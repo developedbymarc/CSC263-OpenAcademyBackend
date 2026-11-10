@@ -12,6 +12,8 @@ public class Module : ITimestamped
     [Required] [MaxLength(1024)] public string Description { get; set; } = null!;
 
     [Range(0, int.MaxValue)] public int Order { get; set; }
+    
+    public ModuleStatus Status { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

@@ -2,48 +2,61 @@ namespace OpenAcademy.Entities;
 
 public enum AccountStatus
 {
-    Active,
-    Inactive,
-    Disabled,
+    Active = 0,
+    Inactive = 1,
+    Disabled = 2,
 }
 
 public enum CourseStatus
 {
-    // Draft MUST stay first: default(CourseStatus) is what a forgotten assignment produces,
-    // and an accidental Draft is harmless while an accidental Published is not.
-    Draft,
-    Published
+    Draft = 0,
+    Published = 1,
+    ModerationHold = 2,
+}
+
+public enum ModuleStatus
+{
+    Draft = 0,
+    Published = 1,
+    ModerationHold = 2,
+}
+
+public enum LessonStatus
+{
+    Draft = 0,
+    Published = 1,
+    ModerationHold = 2,
 }
 
 public enum EnrollmentStatus
 {
-    Active,
-    Withdrawn
+    Active = 0,
+    Withdrawn = 1
 }
 
 public enum AssetType
 {
-    Image,
-    Video
+    Image = 0,
+    Video = 1
 }
 
 public enum AssetStatus
 {
-    Uploading,
-    Ready,
-    Failed
+    Uploading = 0,
+    Ready = 1,
+    Failed = 2
 }
 
 public enum ReportCreationReason
 {
-    Profanity,
-    InappropriateContent,
-    Other,
+    Profanity = 0,
+    InappropriateContent = 1,
+    Other = 2,
 }
 
 public enum ReportClosureReason
 {
-    Resolved,
-    Spam,
-    Other,
+    Resolved = 0,
+    Spam = 1,
+    Other = 2,
 }

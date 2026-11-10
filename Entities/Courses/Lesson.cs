@@ -16,6 +16,8 @@ public class Lesson : ITimestamped
     [Required] public string Content { get; set; } = null!;
 
     [Range(0, int.MaxValue)] public int Order { get; set; }
+    
+    public LessonStatus Status { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
