@@ -12,6 +12,7 @@ public class Course : ITimestamped
 
     [Required] [MaxLength(128)] public string Title { get; set; } = null!;
     [Required] [MaxLength(1024)] public string Description { get; set; } = null!;
+    public string? ThumbnailBlobPath { get; set; }
     public CourseStatus Status { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

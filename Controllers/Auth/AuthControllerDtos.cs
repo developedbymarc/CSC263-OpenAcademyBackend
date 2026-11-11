@@ -1,7 +1,16 @@
 using OpenAcademy.Responses;
 using OpenAcademy.Controllers;
+using OpenAcademy.Entities.Users;
 
 namespace OpenAcademy.Controllers;
+
+public sealed record WhoAmIDto(
+    string UserId,
+    string FirstName,
+    string LastName,
+    string Email,
+    string Role,
+    string? AvatarUrl);
 
 public sealed record CsrfTokenDto(string? RequestToken);
 

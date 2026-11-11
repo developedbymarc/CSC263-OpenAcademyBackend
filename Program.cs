@@ -14,6 +14,7 @@ using OpenAcademy.Configuration;
 using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
+using OpenAcademy.Entities;
 using OpenAcademy.Entities.Users;
 using OpenAcademy.Responses;
 using OpenAcademy.Services.ApplicationServices.EmailTemplateStore;
@@ -74,10 +75,10 @@ builder.Services
                     entry => entry.Key,
                     entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
 
-            return new BadRequestObjectResult(ApiResponse<object>.Failed(
-                "validation_failed",
-                "One or more validation errors occurred.",
-                errors));
+            return new BadRequestObjectResult(ApiResponse.Failed(
+                code: "VALIDATION_FAILURE",
+                message: "One or more validation errors occurred.",
+                details: errors));
         };
     });
 
@@ -173,10 +174,16 @@ builder.Services
 
                 var dbContext = ctx.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
                 var now = DateTimeOffset.UtcNow;
-                var accountIsEnabled = await dbContext.Users.AnyAsync(user =>
-                    user.Id == userId &&
-                    user.Status != OpenAcademy.Entities.AccountStatus.Disabled &&
-                    (!user.LockoutEnabled || user.LockoutEnd == null || user.LockoutEnd <= now));
+
+                var accountIsEnabled = await dbContext.Users
+                    .AsNoTracking()
+                    .AnyAsync(user =>
+                        user.Id == userId
+                        && user.Status != AccountStatus.Disabled
+                        && (!user.LockoutEnabled
+                            || user.LockoutEnd == null
+                            || user.LockoutEnd <= now),
+                    ctx.HttpContext.RequestAborted);
 
                 if (!accountIsEnabled)
                 {

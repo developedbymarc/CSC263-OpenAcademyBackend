@@ -14,10 +14,12 @@ using OpenAcademy.Constants;
 using OpenAcademy.Entities.Users.RoleProfiles;
 using OpenAcademy.Utils;
 using System.Collections.ObjectModel;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.WebUtilities;
 using OpenAcademy.Entities;
+using OpenAcademy.Services.ExternalServices.MediaService;
 
 namespace OpenAcademy.Controllers;
 
@@ -34,6 +36,7 @@ public class AuthController : ControllerBase
     private readonly AbstractRefreshTokenService _refreshTokenService;
     private readonly IAntiforgery _antiforgery;
     private readonly IEmailService _emailService;
+    private readonly IMediaService _mediaService;
 
     // options
     private readonly JwtOptions _jwtOptions;
@@ -58,6 +61,7 @@ public class AuthController : ControllerBase
         AbstractRefreshTokenService refreshTokenService,
         IAntiforgery antiforgery,
         IEmailService emailService,
+        IMediaService mediaService,
         IOptions<FrontendOptions> frontendOptions,
         IOptions<JwtOptions> jwtOptions,
         IOptions<RefreshTokenOptions> refreshTokenOptions,
@@ -72,6 +76,7 @@ public class AuthController : ControllerBase
         _refreshTokenService = refreshTokenService;
         _antiforgery = antiforgery;
         _emailService = emailService;
+        _mediaService = mediaService;
         _frontendOptions = frontendOptions.Value;
         _jwtOptions = jwtOptions.Value;
         _refreshTokenOptions = refreshTokenOptions.Value;
@@ -79,8 +84,47 @@ public class AuthController : ControllerBase
         _linkGenerator = linkGenerator;
     }
 
-    private Guid? GetCurrentUserId() =>
-        Guid.TryParse(_userManager.GetUserId(User), out var id) ? id : null;
+    private Guid? GetCurrentUserId()
+    {
+        // same fallback as your authorization handler: "sub" is not always mapped to NameIdentifier
+        var raw = _userManager.GetUserId(User) ?? User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        return Guid.TryParse(raw, out var id) ? id : null;
+    }
+
+    private string GetCurrentUserRole()
+    {
+        return User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+    }
+
+    [Authorize]
+    [HttpGet("whoami")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ApiResponse<WhoAmIDto>>> WhoAmI(CancellationToken ct)
+    {
+        if (GetCurrentUserId() is not { } userId) return Unauthorized();
+
+        var user = await _userManager.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.AvatarBlobPath })
+            .SingleOrDefaultAsync(ct);
+
+        if (user is null) return Unauthorized();              // deleted since the token was issued
+
+        var avatarUrl = user.AvatarBlobPath is null
+            ? null
+            : _mediaService.GetPublicUrl(user.AvatarBlobPath);
+
+        var dto = new WhoAmIDto(
+            UserId: user.Id.ToString(),
+            FirstName: user.FirstName,
+            LastName: user.LastName,
+            Email: user.Email!,
+            Role: GetCurrentUserRole(),
+            AvatarUrl: avatarUrl);
+
+        return Ok(ApiResponse<WhoAmIDto>.Succeeded(dto));     // adapt to your ApiResponse factory
+    }
+
 
     [HttpGet("csrf")]
     public ActionResult<ApiResponse<CsrfTokenDto>> GetCsrfToken()
