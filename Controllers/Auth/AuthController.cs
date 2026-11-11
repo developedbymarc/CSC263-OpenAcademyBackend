@@ -94,7 +94,8 @@ public class AuthController : ControllerBase
     [HttpPost("refresh")]
     public async Task<ActionResult<ApiResponse>> RefreshAccessToken()
     {
-        if (!Request.Cookies.TryGetValue(_refreshTokenOptions.CookieName, out var oldToken))
+        var oldToken = _refreshTokenService.GetCookie(Request.Cookies);
+        if (oldToken is null)
         {
             return Unauthorized(ApiResponse.Failed(message: "Refresh token missing"));
         }
@@ -175,7 +176,8 @@ public class AuthController : ControllerBase
     [HttpPost("devices-signed-in")]
     public async Task<ActionResult<ApiResponse<IEnumerable<DeviceSessionDto>>>> GetDevicesSignedIn()
     {
-        if (!Request.Cookies.TryGetValue(_refreshTokenOptions.CookieName, out var refreshToken))
+        var refreshToken = _refreshTokenService.GetCookie(Request.Cookies);
+        if (refreshToken is null)
         {
             return Unauthorized(ApiResponse.Failed(message: "Refresh token missing"));
         }
