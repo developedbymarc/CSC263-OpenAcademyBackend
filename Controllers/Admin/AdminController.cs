@@ -78,6 +78,9 @@ public class AdminController : ControllerBase
     private Guid? GetCurrentUserId() =>
         Guid.TryParse(_userManager.GetUserId(User), out var id) ? id : null;
 
+    // TODO: Invite instead of provisioning a role.
+    //       Or provision a role and make them reset the password
+    
     [HttpGet("moderators")]
     public async Task<ActionResult<ApiResponse<IEnumerable<GetAllModeratorsDto>>>> GetAllModerators()
     {

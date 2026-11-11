@@ -54,6 +54,9 @@ public class RootController : ControllerBase
         _logger = logger;
     }
 
+    // TODO: Invite instead of provisioning a role.
+    //       Or provision a role and make them reset the password
+    
     [HttpGet("admins")]
     public async Task<ActionResult<ApiResponse<IEnumerable<GetAllAdminsDto>>>> GetAllAdmins()
     {
