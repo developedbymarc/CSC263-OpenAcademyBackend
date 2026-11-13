@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Text;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +13,7 @@ using OpenAcademy.Data;
 using OpenAcademy.Constants;
 using OpenAcademy.Utils;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Protocols.Configuration;
 using OpenAcademy.Entities.Users.RoleProfiles;
@@ -39,11 +42,12 @@ public class AdminController : ControllerBase
     private readonly FrontendOptions _frontendOptions;
 
     // utils
-    private readonly ILogger<AuthController> _logger;
+    private readonly ILogger<AdminController> _logger;
     private readonly LinkGenerator _linkGenerator;
 
     // local constants
     private const string ControllerName = "Admin";
+    private const string ResetPasswordPath = "reset-password";
 
     public AdminController(
         ApplicationDbContext dbContext,
@@ -57,7 +61,7 @@ public class AdminController : ControllerBase
         IOptions<FrontendOptions> frontendOptions,
         IOptions<JwtOptions> jwtOptions,
         IOptions<RefreshTokenOptions> refreshTokenOptions,
-        ILogger<AuthController> logger,
+        ILogger<AdminController> logger,
         LinkGenerator linkGenerator)
     {
         _dbContext = dbContext;
@@ -80,7 +84,7 @@ public class AdminController : ControllerBase
 
     // TODO: Invite instead of provisioning a role.
     //       Or provision a role and make them reset the password
-    
+
     [HttpGet("moderators")]
     public async Task<ActionResult<ApiResponse<IEnumerable<GetAllModeratorsDto>>>> GetAllModerators()
     {
@@ -185,12 +189,42 @@ public class AdminController : ControllerBase
             );
         }
 
-        await _emailService.SendTemplatedEmailAsync(
-            EEmailTemplate.PrivilegedRoleAssignmentNotification,
-            new { first_name = createdModerator!.FirstName, role = RoleNames.Moderator },
-            createdModerator.Email!);
-        _logger.LogInformation("Moderator user created successfully: {ModeratorEmail}", createdModerator.Email);
-        return Ok(ApiResponse.Succeeded("Moderator user created successfully."));
+        var resetPasswdToken = await _userManager.GeneratePasswordResetTokenAsync(createdModerator!);
+        var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(resetPasswdToken));
+        var escapedUserId = Uri.EscapeDataString(createdModerator!.Id.ToString());
+        var acceptLink =
+            $"{_frontendOptions.Origin}/{ResetPasswordPath}?token={encodedToken}&userId={escapedUserId}";
+
+        try
+        {
+            await _emailService.SendTemplatedEmailAsync(
+                EEmailTemplate.PrivilegedRoleAssignmentNotification,
+                new
+                {
+                    first_name = createdModerator!.FirstName,
+                    role = RoleNames.Moderator,
+                    accept_link = acceptLink
+                },
+                createdModerator.Email!);
+
+            _logger.LogInformation("Admin user created successfully: {AdminEmail}", createdModerator.Email);
+            return StatusCode(StatusCodes.Status201Created,
+                ApiResponse.Succeeded("Admin user created successfully.")
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not send email notification for user {UserId}", createdModerator!.Id);
+            return StatusCode(StatusCodes.Status201Created,
+                ApiResponse.Failed(
+                    code: "EMAIL_NOTIFICATION",
+                    message: "Admin registered successfully, but email notification failed to send",
+                    details: new ReadOnlyDictionary<string, string[]>(new Dictionary<string, string[]>
+                    {
+                        { ex.Source ?? "error", [ex.Message] }
+                    }))
+            );
+        }
     }
 
     [HttpDelete("delete-moderator/{moderatorId:guid}")]

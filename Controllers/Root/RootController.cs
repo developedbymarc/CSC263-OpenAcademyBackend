@@ -15,7 +15,9 @@ using OpenAcademy.Entities.Users.RoleProfiles;
 using OpenAcademy.Entities;
 using OpenAcademy.Utils;
 using System.Collections.ObjectModel;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IdentityModel.Protocols.Configuration;
 
 namespace OpenAcademy.Controllers;
@@ -29,29 +31,53 @@ public class RootController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<ApplicationRole> _roleManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly AbstractAccessTokenService _accessTokenService;
     private readonly AbstractRefreshTokenService _refreshTokenService;
+    private readonly IAntiforgery _antiforgery;
     private readonly IEmailService _emailService;
+
+    // options
+    private readonly JwtOptions _jwtOptions;
+    private readonly RefreshTokenOptions _refreshTokenOptions;
+    private readonly FrontendOptions _frontendOptions;
 
     // utils
     private readonly ILogger<RootController> _logger;
+    private readonly LinkGenerator _linkGenerator;
 
     // local constants
     private const string ControllerName = "Root";
+    private const string ResetPasswordPath = "reset-password";
 
     public RootController(
         ApplicationDbContext dbContext,
         UserManager<ApplicationUser> userManager,
         RoleManager<ApplicationRole> roleManager,
+        SignInManager<ApplicationUser> signInManager,
+        AbstractAccessTokenService accessTokenService,
         AbstractRefreshTokenService refreshTokenService,
+        IAntiforgery antiforgery,
         IEmailService emailService,
-        ILogger<RootController> logger)
+        IOptions<FrontendOptions> frontendOptions,
+        IOptions<JwtOptions> jwtOptions,
+        IOptions<RefreshTokenOptions> refreshTokenOptions,
+        ILogger<RootController> logger,
+        LinkGenerator linkGenerator)
     {
         _dbContext = dbContext;
         _userManager = userManager;
         _roleManager = roleManager;
+        _signInManager = signInManager;
+        _accessTokenService = accessTokenService;
         _refreshTokenService = refreshTokenService;
+        _antiforgery = antiforgery;
         _emailService = emailService;
+        _frontendOptions = frontendOptions.Value;
+        _jwtOptions = jwtOptions.Value;
+        _refreshTokenOptions = refreshTokenOptions.Value;
         _logger = logger;
+        _linkGenerator = linkGenerator;
     }
 
     // TODO: Invite instead of provisioning a role.
@@ -161,12 +187,23 @@ public class RootController : ControllerBase
                 details: failure.ToDetails())
             );
         }
+        
+        var resetPasswdToken = await _userManager.GeneratePasswordResetTokenAsync(createdAdmin!);
+        var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(resetPasswdToken));
+        var escapedUserId = Uri.EscapeDataString(createdAdmin!.Id.ToString());
+        var acceptLink =
+            $"{_frontendOptions.Origin}/{ResetPasswordPath}?token={encodedToken}&userId={escapedUserId}";
 
         try
         {
             await _emailService.SendTemplatedEmailAsync(
                 EEmailTemplate.PrivilegedRoleAssignmentNotification,
-                new { first_name = createdAdmin!.FirstName, role = RoleNames.Admin },
+                new
+                {
+                    first_name = createdAdmin!.FirstName,
+                    role = RoleNames.Moderator,
+                    accept_link = acceptLink
+                },
                 createdAdmin.Email!);
 
             _logger.LogInformation("Admin user created successfully: {AdminEmail}", createdAdmin.Email);

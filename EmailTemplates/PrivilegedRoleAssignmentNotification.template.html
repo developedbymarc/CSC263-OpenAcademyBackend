@@ -1,6 +1,6 @@
-<!-- subject:  -->
+<!-- subject: Invitation to {{ role | html.escape }} Team -->
 <p>Hello, {{ first_name | html.escape }}!</p>
-<p>You were assigned as {{ role | html.escape }}.</p>
+<p>You are invited as {{ role | html.escape }}.</p>
 <p>You can either accept this role and follow with the password reset, or reject it by ignoring this email:</p>
 <br />
-<a href="{{ acceptance_link | html.escape }}">Accept & Reset Password</a>
+<a href="{{ accept_link | html.escape }}">Accept</a>
