@@ -36,6 +36,7 @@ public class ApplicationUser : IdentityUser<Guid>
     public InstructorProfile? InstructorProfile { get; set; }
     public ModeratorProfile? ModeratorProfile { get; set; }
     public AdminProfile? AdminProfile { get; set; }
+    public RootProfile? RootProfile { get; set; }
 
     // auth
     public ICollection<RefreshToken> RefreshTokens { get; } = new List<RefreshToken>();

@@ -1,65 +1,102 @@
-using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Identity;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using OpenAcademy.Configuration.Options;
+using Microsoft.EntityFrameworkCore;
+using OpenAcademy.Constants;
 using OpenAcademy.Data;
-using OpenAcademy.Entities.Users;
-using OpenAcademy.Services.ApplicationServices.TokenService;
-using OpenAcademy.Services.ExternalServices.EmailService;
+using OpenAcademy.Entities;
+using OpenAcademy.Entities.Courses;
+using OpenAcademy.Responses;
 
 namespace OpenAcademy.Controllers;
 
 [ApiController]
-[Route("[controller]")]
-public class CoursesController : ControllerBase
+[Route("api/courses")]
+public sealed class CoursesController(ApplicationDbContext dbContext) : ControllerBase
 {
-    // services
-    private readonly ApplicationDbContext _dbContext;
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly RoleManager<ApplicationRole> _roleManager;
-    private readonly SignInManager<ApplicationUser> _signInManager;
-    private readonly AbstractAccessTokenService _accessTokenService;
-    private readonly AbstractRefreshTokenService _refreshTokenService;
-    private readonly IAntiforgery _antiforgery;
-    private readonly IEmailService _emailService;
-
-    // options
-    private readonly JwtOptions _jwtOptions;
-    private readonly RefreshTokenOptions _refreshTokenOptions;
-    private readonly FrontendOptions _frontendOptions;
-
-    // utils
-    private readonly ILogger<CoursesController> _logger;
-    private readonly LinkGenerator _linkGenerator;
-
-    public CoursesController(
-        ApplicationDbContext dbContext,
-        UserManager<ApplicationUser> userManager,
-        RoleManager<ApplicationRole> roleManager,
-        SignInManager<ApplicationUser> signInManager,
-        AbstractAccessTokenService accessTokenService,
-        AbstractRefreshTokenService refreshTokenService,
-        IAntiforgery antiforgery,
-        IEmailService emailService,
-        IOptions<FrontendOptions> frontendOptions,
-        IOptions<JwtOptions> jwtOptions,
-        IOptions<RefreshTokenOptions> refreshTokenOptions,
-        ILogger<CoursesController> logger,
-        LinkGenerator linkGenerator)
+    [HttpPost]
+    [Authorize(Roles = RoleNames.Instructor)]
+    public async Task<ActionResult<ApiResponse<CourseDto>>> Create(
+        [FromBody] CreateCourseRequest request, CancellationToken ct)
     {
-        _dbContext = dbContext;
-        _userManager = userManager;
-        _roleManager = roleManager;
-        _signInManager = signInManager;
-        _accessTokenService = accessTokenService;
-        _refreshTokenService = refreshTokenService;
-        _antiforgery = antiforgery;
-        _emailService = emailService;
-        _frontendOptions = frontendOptions.Value;
-        _jwtOptions = jwtOptions.Value;
-        _refreshTokenOptions = refreshTokenOptions.Value;
-        _logger = logger;
-        _linkGenerator = linkGenerator;
+        if (User.IsInRole(RoleNames.Root) || !TryGetCurrentUserId(out var instructorId))
+            return Forbid();
+
+        var instructorExists = await dbContext.InstructorProfiles
+            .AnyAsync(profile => profile.UserId == instructorId, ct);
+        if (!instructorExists)
+            return Forbid();
+
+        var categoryIds = (request.CategoryIds ?? []).Distinct().ToArray();
+        var categories = await dbContext.Categories
+            .Where(category => categoryIds.Contains(category.Id))
+            .ToListAsync(ct);
+        if (categories.Count != categoryIds.Length)
+            return BadRequest(ApiResponse<CourseDto>.Failed(
+                "One or more categories were not found.", "category_not_found"));
+
+        var course = new Course
+        {
+            InstructorId = instructorId,
+            Title = request.Title,
+            Description = request.Description,
+            ThumbnailBlobPath = string.Empty,
+            Status = CourseStatus.Draft
+        };
+        foreach (var category in categories)
+            course.Categories.Add(category);
+
+        dbContext.Courses.Add(course);
+        await dbContext.SaveChangesAsync(ct);
+
+        return StatusCode(StatusCodes.Status201Created,
+            ApiResponse<CourseDto>.Succeeded(CourseDto.From(course)));
+    }
+
+    [HttpPost("{courseId:guid}/enrollments")]
+    [Authorize(Policy = PolicyNames.CanEnrollInCourse)]
+    public async Task<ActionResult<ApiResponse<EnrollmentDto>>> Enroll(
+        Guid courseId, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var studentId))
+            return Forbid();
+
+        var studentExists = await dbContext.StudentProfiles
+            .AnyAsync(profile => profile.UserId == studentId, ct);
+        if (!studentExists)
+            return Forbid();
+
+        var enrollment = await dbContext.Enrollments
+            .FirstOrDefaultAsync(e => e.CourseId == courseId && e.StudentId == studentId, ct);
+        var wasAlreadyActive = enrollment?.Status == EnrollmentStatus.Active;
+
+        if (enrollment is null)
+        {
+            enrollment = new Enrollment
+            {
+                CourseId = courseId,
+                StudentId = studentId,
+                EnrollmentDate = DateTimeOffset.UtcNow,
+                Status = EnrollmentStatus.Active
+            };
+            dbContext.Enrollments.Add(enrollment);
+        }
+        else if (!wasAlreadyActive)
+        {
+            enrollment.EnrollmentDate = DateTimeOffset.UtcNow;
+            enrollment.Status = EnrollmentStatus.Active;
+        }
+
+        if (!wasAlreadyActive)
+            await dbContext.SaveChangesAsync(ct);
+
+        var result = ApiResponse<EnrollmentDto>.Succeeded(EnrollmentDto.From(enrollment));
+        return wasAlreadyActive ? Ok(result) : StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    private bool TryGetCurrentUserId(out Guid userId)
+    {
+        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        return Guid.TryParse(raw, out userId);
     }
 }

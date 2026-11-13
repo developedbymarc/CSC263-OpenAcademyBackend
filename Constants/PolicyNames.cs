@@ -7,4 +7,5 @@ public static class PolicyNames
     public const string CanDeleteCourseContent    = "CanDeleteCourseContent";
     public const string CanPublishCourseContent   = "CanPublishCourseContent";
     public const string CanUnpublishCourseContent = "CanUnpublishCourseContent";
+    public const string CanEnrollInCourse         = "CanEnrollInCourse";
 }

@@ -15,21 +15,21 @@ namespace OpenAcademy.Authorization;
 //
 // Access is decided once, at the COURSE, and inherited by modules, lessons and lesson assets.
 //
-//   Operation   Instructor (owner)   Enrolled student      Admin   Moderator
-//   Read        yes                  yes, if all visible   yes     yes
+//   Operation   Instructor (owner)   Student                  Admin   Moderator
+//   Read        yes                  yes, if enrolled/visible yes     yes
 //   Edit        yes
 //   Delete      yes
 //   Publish     yes (unless held)
-//   Unpublish   yes                                        yes
+//   Unpublish   yes                                           yes
+//   Enroll                           yes, if course published
 //
 // Root is always refused. Everything fails closed: unknown resource, malformed id, no user => no.
 //
-// Assumed model (rename to match yours):
-//   Course        Id, InstructorId, IsPublished, ModerationHold
-//   Module        Id, CourseId, Course, IsPublished            (DbSet: Modules)
-//   Lesson        Id, Module, IsPublished                      (DbSet: Lessons)
+//   Course        Id, InstructorId, Status                     (DbSet: Courses)
+//   Module        Id, CourseId, Course, Status                 (DbSet: Modules)
+//   Lesson        Id, Module, Status                           (DbSet: Lessons)
 //   LessonAsset   Id, Lesson                                   (DbSet: LessonAssets)
-//   Enrollment    CourseId, StudentId                          (DbSet: Enrollments)
+//   Enrollment    CourseId, StudentId, Status                  (DbSet: Enrollments)
 // ---------------------------------------------------------------------------------------------
 
 public enum CourseResourceKind { Course, Module, Lesson, Asset }
@@ -44,9 +44,11 @@ public static class CourseOperations
     public static readonly OperationAuthorizationRequirement Delete    = new() { Name = nameof(Delete) };
     public static readonly OperationAuthorizationRequirement Publish   = new() { Name = nameof(Publish) };
     public static readonly OperationAuthorizationRequirement Unpublish = new() { Name = nameof(Unpublish) };
+    public static readonly OperationAuthorizationRequirement Enroll    = new() { Name = nameof(Enroll) };
 
     internal static bool IsCourseOperation(OperationAuthorizationRequirement r) =>
-        r.Name is nameof(Read) or nameof(Edit) or nameof(Delete) or nameof(Publish) or nameof(Unpublish);
+        r.Name is nameof(Read) or nameof(Edit) or nameof(Delete) or nameof(Publish)
+            or nameof(Unpublish) or nameof(Enroll);
 }
 
 // ------------------------------------ the decision ------------------------------------------
@@ -86,6 +88,7 @@ internal sealed class CourseAccess(ApplicationDbContext db) : ICourseAccess
         var isInstructor = facts.InstructorId == userId;
         var isAdmin = user.IsInRole(RoleNames.Admin);
         var isModerator = user.IsInRole(RoleNames.Moderator);
+        var isStudent = user.IsInRole(RoleNames.Student);
 
         return operation.Name switch
         {
@@ -103,6 +106,12 @@ internal sealed class CourseAccess(ApplicationDbContext db) : ICourseAccess
             // Add "|| isModerator" if access controls are changed to allow moderators to unpublish too.
             nameof(CourseOperations.Unpublish) =>
                 isInstructor || isAdmin,
+
+            nameof(CourseOperations.Enroll) =>
+                resource.Kind == CourseResourceKind.Course
+                && isStudent
+                && facts.Visible
+                && !facts.ModerationHold,
 
             _ => false
         };
@@ -122,7 +131,8 @@ internal sealed class CourseAccess(ApplicationDbContext db) : ICourseAccess
                         c.InstructorId,
                         c.Status == CourseStatus.ModerationHold,
                         c.Status == CourseStatus.Published,
-                        db.Enrollments.Any(e => e.CourseId == c.Id && e.StudentId == userId)))
+                        db.Enrollments.Any(e => e.CourseId == c.Id && e.StudentId == userId
+                            && e.Status == EnrollmentStatus.Active)))
                     .SingleOrDefaultAsync(ct);
 
             case CourseResourceKind.Module:
@@ -134,7 +144,8 @@ internal sealed class CourseAccess(ApplicationDbContext db) : ICourseAccess
                             || m.Status == ModuleStatus.ModerationHold,
                         m.Course.Status == CourseStatus.Published
                             && m.Status == ModuleStatus.Published,
-                        db.Enrollments.Any(e => e.CourseId == m.CourseId && e.StudentId == userId)))
+                        db.Enrollments.Any(e => e.CourseId == m.CourseId && e.StudentId == userId
+                            && e.Status == EnrollmentStatus.Active)))
                     .SingleOrDefaultAsync(ct);
 
             case CourseResourceKind.Lesson:
@@ -148,7 +159,8 @@ internal sealed class CourseAccess(ApplicationDbContext db) : ICourseAccess
                         l.Module.Course.Status == CourseStatus.Published
                             && l.Module.Status == ModuleStatus.Published
                             && l.Status == LessonStatus.Published,
-                        db.Enrollments.Any(e => e.CourseId == l.Module.CourseId && e.StudentId == userId)))
+                        db.Enrollments.Any(e => e.CourseId == l.Module.CourseId && e.StudentId == userId
+                            && e.Status == EnrollmentStatus.Active)))
                     .SingleOrDefaultAsync(ct);
 
             case CourseResourceKind.Asset:
@@ -162,7 +174,8 @@ internal sealed class CourseAccess(ApplicationDbContext db) : ICourseAccess
                         a.Lesson.Module.Course.Status == CourseStatus.Published
                             && a.Lesson.Module.Status == ModuleStatus.Published
                             && a.Lesson.Status == LessonStatus.Published,
-                        db.Enrollments.Any(e => e.CourseId == a.Lesson.Module.CourseId && e.StudentId == userId)))
+                        db.Enrollments.Any(e => e.CourseId == a.Lesson.Module.CourseId && e.StudentId == userId
+                            && e.Status == EnrollmentStatus.Active)))
                     .SingleOrDefaultAsync(ct);
 
             default:
@@ -268,7 +281,10 @@ public static class CourseAccessExtensions
                 .AddRequirements(CourseOperations.Publish))
             .AddPolicy(PolicyNames.CanUnpublishCourseContent, p => p
                 .RequireAuthenticatedUser()                     // instructor or Admin, decided in the handler
-                .AddRequirements(CourseOperations.Unpublish));
+                .AddRequirements(CourseOperations.Unpublish))
+            .AddPolicy(PolicyNames.CanEnrollInCourse, p => p
+                .RequireRole(RoleNames.Student)
+                .AddRequirements(CourseOperations.Enroll));
 
         services.AddScoped<ICourseAccess, CourseAccess>();
         services.AddScoped<IAuthorizationHandler, CourseContentHandler>();

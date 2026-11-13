@@ -91,6 +91,14 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Ap
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        builder.Entity<RootProfile>(b =>
+        {
+            b.HasKey(p => p.UserId);
+            b.HasOne(p => p.User).WithOne(u => u.RootProfile)
+                .HasForeignKey<RootProfile>(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<RefreshToken>(b =>
         {
             b.Property(t => t.Id).ValueGeneratedNever();
