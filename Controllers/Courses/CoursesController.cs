@@ -11,7 +11,7 @@ using OpenAcademy.Responses;
 namespace OpenAcademy.Controllers;
 
 [ApiController]
-[Route("api/courses")]
+[Route("[controller]")]
 public sealed class CoursesController(ApplicationDbContext dbContext) : ControllerBase
 {
     [HttpPost]
@@ -20,20 +20,26 @@ public sealed class CoursesController(ApplicationDbContext dbContext) : Controll
         [FromBody] CreateCourseRequest request, CancellationToken ct)
     {
         if (User.IsInRole(RoleNames.Root) || !TryGetCurrentUserId(out var instructorId))
-            return Forbid();
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                ApiResponse.Failed(message: "Forbidden")
+            );
 
         var instructorExists = await dbContext.InstructorProfiles
             .AnyAsync(profile => profile.UserId == instructorId, ct);
         if (!instructorExists)
-            return Forbid();
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                ApiResponse.Failed(message: "Forbidden")
+            );
 
         var categoryIds = (request.CategoryIds ?? []).Distinct().ToArray();
         var categories = await dbContext.Categories
-            .Where(category => categoryIds.Contains(category.Id))
+            .Where(category => ((IEnumerable<int>)categoryIds).Contains(category.Id))
             .ToListAsync(ct);
         if (categories.Count != categoryIds.Length)
-            return BadRequest(ApiResponse<CourseDto>.Failed(
-                "One or more categories were not found.", "category_not_found"));
+            return BadRequest(ApiResponse.Failed(
+                "One or more categories were not found.", "CATEGORY_NOT_FOUND"));
 
         var course = new Course
         {
@@ -59,12 +65,18 @@ public sealed class CoursesController(ApplicationDbContext dbContext) : Controll
         Guid courseId, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var studentId))
-            return Forbid();
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                ApiResponse.Failed(message: "Forbidden")
+            );
 
         var studentExists = await dbContext.StudentProfiles
             .AnyAsync(profile => profile.UserId == studentId, ct);
         if (!studentExists)
-            return Forbid();
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                ApiResponse.Failed(message: "Forbidden")
+            );
 
         var enrollment = await dbContext.Enrollments
             .FirstOrDefaultAsync(e => e.CourseId == courseId && e.StudentId == studentId, ct);

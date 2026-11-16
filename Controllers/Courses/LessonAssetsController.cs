@@ -86,7 +86,7 @@ public sealed class LessonAssetsController : ControllerBase
         var asset = await _dbContext.LessonAssets
             .FirstOrDefaultAsync(a => a.Id == assetId && a.LessonId == lessonId, ct);
         if (asset is null)
-            return NotFound(ApiResponse<object?>.Failed("asset_not_found", "The lesson asset was not found."));
+            return NotFound(ApiResponse<object?>.Failed("ASSET_NOT_FOUND", "The lesson asset was not found."));
 
         _dbContext.LessonAssets.Remove(asset);
         await _dbContext.SaveChangesAsync(ct);
@@ -118,7 +118,7 @@ public sealed class LessonAssetsController : ControllerBase
         catch (MediaRejectedException ex)
         {
             return StatusCode(ex.StatusCode,
-                ApiResponse<LessonAssetDto>.Failed("media_rejected", ex.Message));
+                ApiResponse<LessonAssetDto>.Failed("MEDIA_REJECTED", ex.Message));
         }
 
         try

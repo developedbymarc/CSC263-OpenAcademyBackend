@@ -20,7 +20,7 @@ public sealed class ModuleController(ApplicationDbContext dbContext) : Controlle
     {
         var courseExists = await dbContext.Courses.AnyAsync(course => course.Id == courseId, ct);
         if (!courseExists)
-            return NotFound(ApiResponse<ModuleDto>.Failed("The course was not found.", "course_not_found"));
+            return NotFound(ApiResponse<ModuleDto>.Failed("The course was not found.", "COURSE_NOT_FOUND"));
 
         var module = new Module
         {
