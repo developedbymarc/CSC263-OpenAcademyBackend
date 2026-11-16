@@ -151,7 +151,7 @@ public class MeController : ControllerBase
         _dbContext.Users.Update(user);
         await _dbContext.SaveChangesAsync();
 
-        return Ok();
+        return Ok(ApiResponse.Succeeded(message: "Profile info updated successfully."));
     }
 
     // no explicit request size limit here for the time being.
@@ -193,8 +193,6 @@ public class MeController : ControllerBase
             .Include(u => u.AdminProfile)
             .Include(u => u.RootProfile)
             .FirstOrDefaultAsync(u => u.Id == userId);
-
-
 
         var myInfoDto = new GetMyInfoDto
         (
@@ -245,6 +243,6 @@ public class MeController : ControllerBase
                     message: "The user's role is invalid or not supported."));
         }
 
-        return Ok(myInfoDto);
+        return Ok(ApiResponse<GetMyInfoDto>.Succeeded(myInfoDto));
     }
 }
