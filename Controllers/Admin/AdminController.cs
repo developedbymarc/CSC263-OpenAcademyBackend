@@ -136,11 +136,12 @@ public class AdminController : ControllerBase
 
                 var moderator = new ApplicationUser
                 {
-                    UserName = signUpDto.Email,
+                    UserName = signUpDto.UserName,
                     Email = signUpDto.Email,
                     FirstName = signUpDto.FirstName,
                     LastName = signUpDto.LastName,
-                    EmailConfirmed = true
+                    EmailConfirmed = true,
+                    CreatedAt = DateTimeOffset.UtcNow
                 };
 
                 var createResult = await _userManager.CreateAsync(moderator, signUpDto.Password);

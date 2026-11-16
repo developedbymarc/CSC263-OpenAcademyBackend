@@ -19,6 +19,7 @@ public sealed record EmailConfirmationDto(string UserId, string Token);
 public sealed record ResendEmailConfirmationDto(string Email);
 
 public sealed record SignUpDto(
+    string UserName,
     string FirstName,
     string LastName,
     string Email,

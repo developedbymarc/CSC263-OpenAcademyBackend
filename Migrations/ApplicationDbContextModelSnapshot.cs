@@ -256,7 +256,6 @@ namespace OpenAcademy.Migrations
                         .HasColumnType("character varying(32)");
 
                     b.Property<string>("ThumbnailBlobPath")
-                        .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
 
@@ -601,7 +600,6 @@ namespace OpenAcademy.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("AvatarBlobPath")
-                        .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
 
@@ -735,6 +733,19 @@ namespace OpenAcademy.Migrations
                     b.HasKey("UserId");
 
                     b.ToTable("ModeratorProfiles");
+                });
+
+            modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.RootProfile", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("RootProfile");
                 });
 
             modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.StudentProfile", b =>
@@ -964,6 +975,17 @@ namespace OpenAcademy.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.RootProfile", b =>
+                {
+                    b.HasOne("OpenAcademy.Entities.Users.ApplicationUser", "User")
+                        .WithOne("RootProfile")
+                        .HasForeignKey("OpenAcademy.Entities.Users.RoleProfiles.RootProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.StudentProfile", b =>
                 {
                     b.HasOne("OpenAcademy.Entities.Users.ApplicationUser", "User")
@@ -1007,6 +1029,8 @@ namespace OpenAcademy.Migrations
                     b.Navigation("ModeratorProfile");
 
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("RootProfile");
 
                     b.Navigation("StudentProfile");
                 });

@@ -375,6 +375,7 @@ public class AuthController : ControllerBase
 
                 var user = new ApplicationUser
                 {
+                    UserName = signUpDto.UserName,
                     FirstName = signUpDto.FirstName,
                     LastName = signUpDto.LastName,
                     Email = signUpDto.Email,

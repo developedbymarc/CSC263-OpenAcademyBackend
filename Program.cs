@@ -16,9 +16,12 @@ using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities;
 using OpenAcademy.Entities.Users;
+using OpenAcademy.Filters;
 using OpenAcademy.Responses;
 using OpenAcademy.Services.ApplicationServices.EmailTemplateStore;
 using OpenAcademy.Services.ApplicationServices.TokenService;
+using OpenAcademy.Services.ExternalServices.EmailService;
+using OpenAcademy.Services.ExternalServices.MediaService;
 using OpenAcademy.Startup;
 using Scalar.AspNetCore;
 
@@ -59,7 +62,7 @@ builder.Services
 
 // --- Controllers ---
 builder.Services
-    .AddControllers(options => options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()))
+    .AddControllers(options => options.Filters.Add<ValidateCsrfFilter>())
     .AddJsonOptions(options =>
     {
         // Accepts both names and numbers when reading (e.g. "Instructor" / 0), writes names
@@ -102,7 +105,8 @@ builder.Services
     .AddIdentityCore<ApplicationUser>(options =>
     {
         options.User.RequireUniqueEmail = true;
-        options.User.AllowedUserNameCharacters = Characters.Lowercase + Characters.Uppercase + Characters.Digits + "-._";
+        options.User.AllowedUserNameCharacters =
+            Characters.Lowercase + Characters.Uppercase + Characters.Digits + "-._";
 
         options.Password.RequiredLength = 8;
         options.Password.RequireNonAlphanumeric = true;
@@ -178,12 +182,12 @@ builder.Services
                 var accountIsEnabled = await dbContext.Users
                     .AsNoTracking()
                     .AnyAsync(user =>
-                        user.Id == userId
-                        && user.Status != AccountStatus.Disabled
-                        && (!user.LockoutEnabled
-                            || user.LockoutEnd == null
-                            || user.LockoutEnd <= now),
-                    ctx.HttpContext.RequestAborted);
+                            user.Id == userId
+                            && user.Status != AccountStatus.Disabled
+                            && (!user.LockoutEnabled
+                                || user.LockoutEnd == null
+                                || user.LockoutEnd <= now),
+                        ctx.HttpContext.RequestAborted);
 
                 if (!accountIsEnabled)
                 {
@@ -205,6 +209,8 @@ builder.Services.AddScoped<RootUserBootstrapper>();
 builder.Services.AddScoped<AbstractRefreshTokenService, RefreshTokenService>();
 builder.Services.AddSingleton<AbstractAccessTokenService, AccessTokenService>();
 builder.Services.AddSingleton<EmailTemplateStore>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IMediaService, MediaService>();
 
 var app = builder.Build();
 
@@ -241,7 +247,7 @@ using (var scope = app.Services.CreateScope())
     if (args.Contains("bootstrap-root"))
     {
         Environment.ExitCode = await BootstrapRootCommand.RunAsync(services);
-        return;   // exits without starting the web server
+        return; // exits without starting the web server
     }
 
     var bootstrapper = services.GetRequiredService<RootUserBootstrapper>();

@@ -135,11 +135,12 @@ public class RootController : ControllerBase
                 // Create new admin user
                 var admin = new ApplicationUser
                 {
-                    UserName = signUpDto.Email,
+                    UserName = signUpDto.UserName,
                     Email = signUpDto.Email,
                     FirstName = signUpDto.FirstName,
                     LastName = signUpDto.LastName,
-                    EmailConfirmed = true
+                    EmailConfirmed = true,
+                    CreatedAt = DateTimeOffset.UtcNow
                 };
 
                 var createResult = await _userManager.CreateAsync(admin, signUpDto.Password);

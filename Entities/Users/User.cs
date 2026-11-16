@@ -20,7 +20,7 @@ public class ApplicationUser : IdentityUser<Guid>
     public string FirstName { get; set; } = null!;
     [Required, MaxLength(64)]
     public string LastName { get; set; } = null!;
-    [Required, MaxLength(1024)]
+    [MaxLength(1024)]
     public string? AvatarBlobPath { get; set; }
 
     // metadata
