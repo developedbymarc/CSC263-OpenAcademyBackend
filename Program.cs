@@ -85,6 +85,8 @@ builder.Services
         };
     });
 
+var isMigrationCommand = args is ["migrate"];
+
 // --- Database ---
 builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
 {

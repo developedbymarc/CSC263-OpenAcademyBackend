@@ -10,23 +10,31 @@ public sealed class DatabaseOptionsValidator : IValidateOptions<DatabaseOptions>
     {
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) return ValidateOptionsResult.Success;
 
+        if (!IsValidConnectionString(options.ConnectionString))
+        {
+            return ValidateOptionsResult.Fail(
+                $"The {nameof(DatabaseOptions.ConnectionString)} is not a valid PostgreSQL connection string.");
+        }
+
+        if (options.MigratorConnectionString is not null && !IsValidConnectionString(options.MigratorConnectionString))
+        {
+            return ValidateOptionsResult.Fail(
+                $"The {nameof(DatabaseOptions.MigratorConnectionString)} is not a valid PostgreSQL connection string.");
+        }
+
+        return ValidateOptionsResult.Success;
+    }
+
+    private static bool IsValidConnectionString(string connectionString)
+    {
         try
         {
-            var builder = new NpgsqlConnectionStringBuilder(options.ConnectionString);
-            var failures = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(builder.Host))
-                failures.Add("Database:ConnectionString must specify Host.");
-            if (string.IsNullOrWhiteSpace(builder.Database))
-                failures.Add("Database:ConnectionString must specify Database.");
-            // Username/Password are deliberately not required: Npgsql can take them from PGUSER/PGPASSFILE
-
-            return failures.Count > 0 ? ValidateOptionsResult.Fail(failures) : ValidateOptionsResult.Success;
+            var builder = new NpgsqlConnectionStringBuilder(connectionString);
+            return !string.IsNullOrWhiteSpace(builder.Host) && !string.IsNullOrWhiteSpace(builder.Database);
         }
         catch (Exception e) when (e is ArgumentException or FormatException)
         {
-            // Don't echo the exception or the value: the string contains a password
-            return ValidateOptionsResult.Fail("Database:ConnectionString is not a valid Npgsql connection string.");
+            return false;
         }
     }
 }
