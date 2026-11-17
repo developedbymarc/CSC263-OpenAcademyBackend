@@ -254,10 +254,9 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse<IEnumerable<DeviceSessionDto>>.Succeeded(activeSessions));
     }
 
-#pragma warning disable
     [Authorize]
     [HttpPost("signout")]
-    public async Task<ActionResult<ApiResponse>> SignOut()
+    public async Task<ActionResult<ApiResponse>> SignOutUser()
     {
         if (GetCurrentUserId() is not { } userId)
         {
@@ -281,7 +280,6 @@ public class AuthController : ControllerBase
         _refreshTokenService.UnsetCookie(Response.Cookies);
         return Ok(ApiResponse.Succeeded(message: "Signed out successfully"));
     }
-#pragma warning restore
 
     [Authorize]
     [HttpPost("signout-all-devices")]
