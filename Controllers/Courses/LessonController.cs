@@ -19,10 +19,16 @@ public sealed class LessonController(
     [HttpGet]
     [Authorize(Policy = PolicyNames.CanReadCourseContent)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<LessonDto>>>> List(
-        Guid moduleId, CancellationToken ct)
+        Guid courseId, Guid moduleId, CancellationToken ct)
     {
+        var moduleExists = await dbContext.Modules
+            .AnyAsync(module => module.Id == moduleId && module.CourseId == courseId, ct);
+        if (!moduleExists)
+            return NotFound(ApiResponse<IReadOnlyList<LessonDto>>.Failed(
+                "The module was not found.", "MODULE_NOT_FOUND"));
+
         var lessons = await dbContext.Lessons.AsNoTracking()
-            .Where(lesson => lesson.ModuleId == moduleId)
+            .Where(lesson => lesson.ModuleId == moduleId && lesson.Module.CourseId == courseId)
             .OrderBy(lesson => lesson.Order)
             .ThenBy(lesson => lesson.Id)
             .ToListAsync(ct);
@@ -41,11 +47,13 @@ public sealed class LessonController(
     [HttpGet("{lessonId:guid}")]
     [Authorize(Policy = PolicyNames.CanReadCourseContent)]
     public async Task<ActionResult<ApiResponse<LessonDto>>> Get(
-        Guid moduleId, Guid lessonId, CancellationToken ct)
+        Guid courseId, Guid moduleId, Guid lessonId, CancellationToken ct)
     {
         var lesson = await dbContext.Lessons.AsNoTracking()
             .FirstOrDefaultAsync(lesson =>
-                lesson.Id == lessonId && lesson.ModuleId == moduleId, ct);
+                lesson.Id == lessonId
+                && lesson.ModuleId == moduleId
+                && lesson.Module.CourseId == courseId, ct);
         if (lesson is null)
             return NotFound(ApiResponse<LessonDto>.Failed("The lesson was not found.", "LESSON_NOT_FOUND"));
 
@@ -59,9 +67,10 @@ public sealed class LessonController(
     [HttpPost]
     [Authorize(Policy = PolicyNames.CanEditCourseContent)]
     public async Task<ActionResult<ApiResponse<LessonDto>>> Create(
-        Guid moduleId, [FromBody] CreateLessonRequest request, CancellationToken ct)
+        Guid courseId, Guid moduleId, [FromBody] CreateLessonRequest request, CancellationToken ct)
     {
-        var moduleExists = await dbContext.Modules.AnyAsync(module => module.Id == moduleId, ct);
+        var moduleExists = await dbContext.Modules
+            .AnyAsync(module => module.Id == moduleId && module.CourseId == courseId, ct);
         if (!moduleExists)
             return NotFound(ApiResponse<LessonDto>.Failed("The module was not found.", "module_not_found"));
 

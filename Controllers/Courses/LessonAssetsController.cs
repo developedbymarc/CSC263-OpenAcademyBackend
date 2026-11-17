@@ -13,9 +13,9 @@ using OpenAcademy.Services.ExternalServices.MediaService;
 namespace OpenAcademy.Controllers;
 
 /// <remarks>
-/// Authorization is declarative: the CanReadLesson / CanEditLesson policies read {lessonId} from the
-/// route and run BEFORE the request body is bound, so unauthorized uploads are never buffered.
-/// Every action here must keep a {lessonId} route parameter and a lesson policy.
+/// Authorization is declarative: course-content policies read the most specific resource ID
+/// from the route and run BEFORE the request body is bound, so unauthorized uploads are never buffered.
+/// Every action here must keep the full ancestor route and a course-content policy.
 /// </remarks>
 [ApiController]
 [Route("Courses/{courseId:guid}/Modules/{moduleId:guid}/Lessons/{lessonId:guid}/Assets")]
@@ -43,10 +43,17 @@ public sealed class LessonAssetsController : ControllerBase
     [Authorize(Policy = PolicyNames.CanReadCourseContent)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<LessonAssetDto>>>> List(
-        Guid lessonId, CancellationToken ct)
+        Guid courseId, Guid moduleId, Guid lessonId, CancellationToken ct)
     {
+        if (!await LessonBelongsToRouteAsync(courseId, moduleId, lessonId, ct))
+            return NotFound(ApiResponse<IReadOnlyList<LessonAssetDto>>.Failed(
+                "The lesson was not found.", "LESSON_NOT_FOUND"));
+
         var assets = await _dbContext.LessonAssets.AsNoTracking()
-            .Where(a => a.LessonId == lessonId && a.Status == AssetStatus.Ready)
+            .Where(a => a.LessonId == lessonId
+                && a.Lesson.ModuleId == moduleId
+                && a.Lesson.Module.CourseId == courseId
+                && a.Status == AssetStatus.Ready)
             .OrderBy(a => a.Order)
             .ToListAsync(ct);
 
@@ -64,27 +71,31 @@ public sealed class LessonAssetsController : ControllerBase
     [RequestSizeLimit(MediaLimits.ImageCeilingBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MediaLimits.ImageCeilingBytes + 1024 * 1024)]
     public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadImage(
-        Guid lessonId, [FromForm] UploadLessonAssetRequest req,
+        Guid courseId, Guid moduleId, Guid lessonId, [FromForm] UploadLessonAssetRequest req,
         CancellationToken ct)
-        => Upload(lessonId, req.File, AssetType.Image, _mediaService.StoreImageAsync, ct);
+        => Upload(courseId, moduleId, lessonId, req.File, AssetType.Image, _mediaService.StoreImageAsync, ct);
 
     [HttpPost("videos")]
     [Authorize(Policy = PolicyNames.CanEditCourseContent)]
     [RequestSizeLimit(MediaLimits.VideoCeilingBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MediaLimits.VideoCeilingBytes + 1024 * 1024)]
     public Task<ActionResult<ApiResponse<LessonAssetDto>>> UploadVideo(
-        Guid lessonId, [FromForm] UploadLessonAssetRequest req,
+        Guid courseId, Guid moduleId, Guid lessonId, [FromForm] UploadLessonAssetRequest req,
         CancellationToken ct)
-        => Upload(lessonId, req.File, AssetType.Video, _mediaService.StoreVideoAsync, ct);
+        => Upload(courseId, moduleId, lessonId, req.File, AssetType.Video, _mediaService.StoreVideoAsync, ct);
 
     [HttpDelete("{assetId:guid}")]
     [Authorize(Policy = PolicyNames.CanDeleteCourseContent)]
     public async Task<ActionResult<ApiResponse<object?>>> Delete(
-        Guid lessonId, Guid assetId, CancellationToken ct)
+        Guid courseId, Guid moduleId, Guid lessonId, Guid assetId, CancellationToken ct)
     {
-        // Scoped by lessonId so the policy's lesson is the one the asset really belongs to.
+        // Scope the asset to every ancestor in the route as well as the authorized asset.
         var asset = await _dbContext.LessonAssets
-            .FirstOrDefaultAsync(a => a.Id == assetId && a.LessonId == lessonId, ct);
+            .FirstOrDefaultAsync(a =>
+                a.Id == assetId
+                && a.LessonId == lessonId
+                && a.Lesson.ModuleId == moduleId
+                && a.Lesson.Module.CourseId == courseId, ct);
         if (asset is null)
             return NotFound(ApiResponse<object?>.Failed("ASSET_NOT_FOUND", "The lesson asset was not found."));
 
@@ -106,9 +117,13 @@ public sealed class LessonAssetsController : ControllerBase
     // ------------------------------------------------------------------
 
     private async Task<ActionResult<ApiResponse<LessonAssetDto>>> Upload(
-        Guid lessonId, IFormFile file, AssetType type,
+        Guid courseId, Guid moduleId, Guid lessonId, IFormFile file, AssetType type,
         Func<string, IFormFile, CancellationToken, Task<StoredMedia>> store, CancellationToken ct)
     {
+        if (!await LessonBelongsToRouteAsync(courseId, moduleId, lessonId, ct))
+            return NotFound(ApiResponse<LessonAssetDto>.Failed(
+                "The lesson was not found.", "LESSON_NOT_FOUND"));
+
         var assetId = Guid.NewGuid();
         StoredMedia stored;
         try
@@ -143,7 +158,7 @@ public sealed class LessonAssetsController : ControllerBase
             await _dbContext.SaveChangesAsync(ct);
 
             var link = _mediaService.CreateDownloadUrl(asset.BlobPath);
-            return CreatedAtAction(nameof(List), new { lessonId },
+            return CreatedAtAction(nameof(List), new { courseId, moduleId, lessonId },
                 ApiResponse<LessonAssetDto>.Succeeded(new LessonAssetDto(
                     asset.Id, asset.Type, asset.ContentType, asset.SizeBytes,
                     asset.DurationSeconds, asset.Order, link.Url, link.ExpiresAt)));
@@ -163,4 +178,11 @@ public sealed class LessonAssetsController : ControllerBase
             throw;
         }
     }
+
+    private Task<bool> LessonBelongsToRouteAsync(
+        Guid courseId, Guid moduleId, Guid lessonId, CancellationToken ct) =>
+        _dbContext.Lessons.AsNoTracking().AnyAsync(lesson =>
+            lesson.Id == lessonId
+            && lesson.ModuleId == moduleId
+            && lesson.Module.CourseId == courseId, ct);
 }
