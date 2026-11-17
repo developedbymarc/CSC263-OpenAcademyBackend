@@ -16,8 +16,12 @@ public class ApplicationUser : IdentityUser<Guid>
     }
 
     // personal information
-    [Required, MaxLength(64)] public string FirstName { get; set; } = null!;
-    [Required, MaxLength(64)] public string LastName { get; set; } = null!;
+    [Required, MaxLength(64)]
+    public string FirstName { get; set; } = null!;
+    [Required, MaxLength(64)]
+    public string LastName { get; set; } = null!;
+    [MaxLength(1024)]
+    public string? AvatarBlobPath { get; set; }
 
     // metadata
     public DateTimeOffset CreatedAt { get; set; }
@@ -32,6 +36,7 @@ public class ApplicationUser : IdentityUser<Guid>
     public InstructorProfile? InstructorProfile { get; set; }
     public ModeratorProfile? ModeratorProfile { get; set; }
     public AdminProfile? AdminProfile { get; set; }
+    public RootProfile? RootProfile { get; set; }
 
     // auth
     public ICollection<RefreshToken> RefreshTokens { get; } = new List<RefreshToken>();

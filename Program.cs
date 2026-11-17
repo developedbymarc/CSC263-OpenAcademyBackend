@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -8,13 +9,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using OpenAcademy.Authorization;
 using OpenAcademy.Configuration;
 using OpenAcademy.Configuration.Options;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
+using OpenAcademy.Entities;
 using OpenAcademy.Entities.Users;
+using OpenAcademy.Filters;
 using OpenAcademy.Responses;
+using OpenAcademy.Services.ApplicationServices.EmailTemplateStore;
 using OpenAcademy.Services.ApplicationServices.TokenService;
+using OpenAcademy.Services.ExternalServices.EmailService;
+using OpenAcademy.Services.ExternalServices.MediaService;
 using OpenAcademy.Startup;
 using Scalar.AspNetCore;
 
@@ -55,7 +62,7 @@ builder.Services
 
 // --- Controllers ---
 builder.Services
-    .AddControllers(options => options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()))
+    .AddControllers(options => options.Filters.Add<ValidateCsrfFilter>())
     .AddJsonOptions(options =>
     {
         // Accepts both names and numbers when reading (e.g. "Instructor" / 0), writes names
@@ -71,10 +78,10 @@ builder.Services
                     entry => entry.Key,
                     entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
 
-            return new BadRequestObjectResult(ApiResponse<object>.Failed(
-                "validation_failed",
-                "One or more validation errors occurred.",
-                errors));
+            return new BadRequestObjectResult(ApiResponse.Failed(
+                code: "VALIDATION_FAILURE",
+                message: "One or more validation errors occurred.",
+                details: errors));
         };
     });
 
@@ -98,7 +105,8 @@ builder.Services
     .AddIdentityCore<ApplicationUser>(options =>
     {
         options.User.RequireUniqueEmail = true;
-        options.User.AllowedUserNameCharacters = Characters.Lowercase + Characters.Uppercase + Characters.Digits + "-._";
+        options.User.AllowedUserNameCharacters =
+            Characters.Lowercase + Characters.Uppercase + Characters.Digits + "-._";
 
         options.Password.RequiredLength = 8;
         options.Password.RequireNonAlphanumeric = true;
@@ -157,17 +165,52 @@ builder.Services
                 ctx.Token = ctx.Request.Cookies[jwtOptions.CookieName];
                 return Task.CompletedTask;
             },
+            // Reject disabled accounts
+            OnTokenValidated = async ctx =>
+            {
+                var userIdValue = ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                                  ?? ctx.Principal?.FindFirst("sub")?.Value;
+                if (!Guid.TryParse(userIdValue, out var userId))
+                {
+                    ctx.Fail("The token does not identify a valid user.");
+                    return;
+                }
+
+                var dbContext = ctx.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                var now = DateTimeOffset.UtcNow;
+
+                var accountIsEnabled = await dbContext.Users
+                    .AsNoTracking()
+                    .AnyAsync(user =>
+                            user.Id == userId
+                            && user.Status != AccountStatus.Disabled
+                            && (!user.LockoutEnabled
+                                || user.LockoutEnd == null
+                                || user.LockoutEnd <= now),
+                        ctx.HttpContext.RequestAborted);
+
+                if (!accountIsEnabled)
+                {
+                    ctx.Fail("The account is disabled or locked.");
+                }
+            },
         };
     });
 
+// Authz and policies
 builder.Services.AddAuthorization();
+builder.Services.AddCourseAccessPolicies();
 
+// API docs
 builder.Services.AddOpenApi();
 
 // My Services
 builder.Services.AddScoped<RootUserBootstrapper>();
 builder.Services.AddScoped<AbstractRefreshTokenService, RefreshTokenService>();
 builder.Services.AddSingleton<AbstractAccessTokenService, AccessTokenService>();
+builder.Services.AddSingleton<EmailTemplateStore>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IMediaService, MediaService>();
 
 var app = builder.Build();
 
@@ -204,7 +247,7 @@ using (var scope = app.Services.CreateScope())
     if (args.Contains("bootstrap-root"))
     {
         Environment.ExitCode = await BootstrapRootCommand.RunAsync(services);
-        return;   // exits without starting the web server
+        return; // exits without starting the web server
     }
 
     var bootstrapper = services.GetRequiredService<RootUserBootstrapper>();

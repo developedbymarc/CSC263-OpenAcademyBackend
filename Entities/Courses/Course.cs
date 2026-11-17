@@ -10,8 +10,12 @@ public class Course : ITimestamped
     [Required] public Guid InstructorId { get; set; }
     public InstructorProfile InstructorProfile { get; set; } = null!;
 
-    [Required] [MaxLength(128)] public string Title { get; set; } = null!;
-    [Required] [MaxLength(1024)] public string Description { get; set; } = null!;
+    [Required, MaxLength(128)]
+    public string Title { get; set; } = null!;
+    [Required, MaxLength(1024)]
+    public string Description { get; set; } = null!;
+    [MaxLength(1024)]
+    public string? ThumbnailBlobPath { get; set; }
     public CourseStatus Status { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

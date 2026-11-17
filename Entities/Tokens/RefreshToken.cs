@@ -21,7 +21,7 @@ public class RefreshToken
     public DateTimeOffset? RevokedAt { get; set; } = null;
 
 
-    public bool IsExpired => ExpiresAt < DateTimeOffset.Now;
+    public bool IsExpired => ExpiresAt < DateTimeOffset.UtcNow;
     public bool IsRevoked => RevokedAt != null;
 
 

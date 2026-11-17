@@ -4,16 +4,22 @@ using MailKit.Security;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using OpenAcademy.Configuration.Options;
+using OpenAcademy.Constants;
+using OpenAcademy.Services.ApplicationServices.EmailTemplateStore;
 
 namespace OpenAcademy.Services.ExternalServices.EmailService;
 
 public sealed class EmailService : IEmailService
 {
     private readonly SmtpEmailOptions _options;
+    private readonly EmailTemplateStore _emailTemplateStore;
 
-    public EmailService(IOptions<SmtpEmailOptions> smtpEmailOptions)
+    public EmailService(
+        IOptions<SmtpEmailOptions> smtpEmailOptions,
+        EmailTemplateStore emailTemplateStore)
     {
         _options = smtpEmailOptions.Value;
+        _emailTemplateStore = emailTemplateStore;
     }
 
     public async Task SendEmailAsync(
@@ -70,5 +76,12 @@ public sealed class EmailService : IEmailService
 
         await client.SendAsync(mimeMessage, cancellationToken);
         await client.DisconnectAsync(true, cancellationToken);
+    }
+
+    public async Task SendTemplatedEmailAsync(EEmailTemplate template, object model, string to, CancellationToken cancellationToken = default)
+    {
+        _emailTemplateStore.Render(template, model).Deconstruct(out var subject, out var body);
+        var message = new EmailMessage(to, subject, body, IsHtml: true);
+        await SendEmailAsync(message, cancellationToken);
     }
 }

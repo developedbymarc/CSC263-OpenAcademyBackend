@@ -8,6 +8,8 @@ public class StudentProfile
 {
     [Key] [ForeignKey("User")] public Guid UserId { get; set; }
     public ApplicationUser User { get; set; } = null!;
+    
+    public DateTimeOffset CreatedAt { get; set; }
 
     public ICollection<Enrollment> Enrollments { get; } = new List<Enrollment>();
 }

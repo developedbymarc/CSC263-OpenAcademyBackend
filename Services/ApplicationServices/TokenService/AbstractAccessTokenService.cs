@@ -42,6 +42,13 @@ public abstract class AbstractAccessTokenService : IGenericCookieToken
 
     public void UnsetCookie(IResponseCookies cookies)
     {
-        cookies.Delete(_jwtOptions.CookieName);
+        cookies.Delete(_jwtOptions.CookieName, new CookieOptions
+        {
+            Path = "/",
+            Secure = true,
+            HttpOnly = true,
+            IsEssential = true,
+            SameSite = SameSiteMode.Lax
+        });
     }
 }

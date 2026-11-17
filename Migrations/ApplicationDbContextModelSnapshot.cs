@@ -255,6 +255,10 @@ namespace OpenAcademy.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("ThumbnailBlobPath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -316,6 +320,9 @@ namespace OpenAcademy.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")
@@ -407,6 +414,9 @@ namespace OpenAcademy.Migrations
                         .HasColumnType("character varying(1024)");
 
                     b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")
@@ -589,14 +599,16 @@ namespace OpenAcademy.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("AvatarBlobPath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -678,9 +690,7 @@ namespace OpenAcademy.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("UserId");
 
@@ -695,6 +705,9 @@ namespace OpenAcademy.Migrations
                     b.Property<string>("Bio")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Expertise")
                         .HasMaxLength(512)
@@ -715,19 +728,33 @@ namespace OpenAcademy.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("UserId");
 
                     b.ToTable("ModeratorProfiles");
                 });
 
+            modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.RootProfile", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("RootProfile");
+                });
+
             modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.StudentProfile", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("UserId");
 
@@ -948,6 +975,17 @@ namespace OpenAcademy.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.RootProfile", b =>
+                {
+                    b.HasOne("OpenAcademy.Entities.Users.ApplicationUser", "User")
+                        .WithOne("RootProfile")
+                        .HasForeignKey("OpenAcademy.Entities.Users.RoleProfiles.RootProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("OpenAcademy.Entities.Users.RoleProfiles.StudentProfile", b =>
                 {
                     b.HasOne("OpenAcademy.Entities.Users.ApplicationUser", "User")
@@ -991,6 +1029,8 @@ namespace OpenAcademy.Migrations
                     b.Navigation("ModeratorProfile");
 
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("RootProfile");
 
                     b.Navigation("StudentProfile");
                 });
