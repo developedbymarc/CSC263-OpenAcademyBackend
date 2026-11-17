@@ -239,7 +239,7 @@ public class AuthController : ControllerBase
         var userId = refreshTokenRecord.UserId;
 
         var activeSessions = await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == userId && !rt.IsRevoked && !rt.IsExpired)
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && !(rt.ExpiresAt < DateTimeOffset.UtcNow))
             .Select(rt => new DeviceSessionDto(
                 RefreshTokenId: rt.Id.ToString(),
                 RefreshTokenFamilyId: rt.FamilyId.ToString(),
@@ -504,7 +504,7 @@ public class AuthController : ControllerBase
             var oldRefreshTokenHash = _refreshTokenService.Hash(oldRefreshToken);
             var oldRefreshTokenRecord = await _dbContext.RefreshTokens
                 .FirstOrDefaultAsync(rt => rt.TokenHash == oldRefreshTokenHash
-                                           && !rt.IsRevoked
+                                           && rt.RevokedAt == null
                 );
 
             if (oldRefreshTokenRecord is not null)

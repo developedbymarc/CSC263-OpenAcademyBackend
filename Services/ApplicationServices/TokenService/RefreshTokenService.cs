@@ -41,7 +41,7 @@ public sealed class RefreshTokenService : AbstractRefreshTokenService
     {
         var now = DateTimeOffset.UtcNow;
         return await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt > now)
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now)
             .ExecuteUpdateAsync(setters =>
                 setters
                     .SetProperty(rt => rt.RevokedAt, now), ct);
@@ -52,7 +52,7 @@ public sealed class RefreshTokenService : AbstractRefreshTokenService
     {
         var now = DateTimeOffset.UtcNow;
         return await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == userId && rt.FamilyId == familyId && !rt.IsRevoked)
+            .Where(rt => rt.UserId == userId && rt.FamilyId == familyId && rt.RevokedAt == null && rt.ExpiresAt > now)
             .ExecuteUpdateAsync(setters =>
                 setters
                     .SetProperty(rt => rt.RevokedAt, now), ct);
