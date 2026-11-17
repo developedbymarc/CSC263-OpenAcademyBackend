@@ -3,6 +3,21 @@ using OpenAcademy.Entities;
 
 namespace OpenAcademy.Controllers;
 
+public sealed record CourseCategoryDto(int Id, string Name, string Slug);
+
+public sealed record CourseCatalogItemDto(
+    Guid Id,
+    string Title,
+    string Description,
+    string? ThumbnailUrl,
+    IReadOnlyList<CourseCategoryDto> Categories);
+
+public sealed record CourseCatalogPageDto(
+    IReadOnlyList<CourseCatalogItemDto> Items,
+    int Page,
+    int PageSize,
+    int TotalCount);
+
 public sealed record CreateCourseRequest(
     [Required, MaxLength(128)] string Title,
     [Required, MaxLength(1024)] string Description,

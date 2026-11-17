@@ -18,13 +18,13 @@ namespace OpenAcademy.Controllers;
 /// Every action here must keep a {lessonId} route parameter and a lesson policy.
 /// </remarks>
 [ApiController]
-[Route("api/lessons/{lessonId:guid}/assets")]
+[Route("Courses/{courseId:guid}/Modules/{moduleId:guid}/Lessons/{lessonId:guid}/Assets")]
 public sealed class LessonAssetsController : ControllerBase
 {
     // services
     private readonly ApplicationDbContext _dbContext;
     private readonly IMediaService _mediaService;
-    
+
     // utils
     private readonly ILogger<LessonAssetsController> _logger;
 
@@ -37,7 +37,7 @@ public sealed class LessonAssetsController : ControllerBase
         _mediaService = mediaService.Value;
         _logger = logger;
     }
-    
+
     // Presigned URLs are bearer credentials: never cache this response.
     [HttpGet]
     [Authorize(Policy = PolicyNames.CanReadCourseContent)]

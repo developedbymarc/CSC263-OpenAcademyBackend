@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenAcademy.Authorization;
 using OpenAcademy.Constants;
 using OpenAcademy.Data;
 using OpenAcademy.Entities;
@@ -10,9 +11,51 @@ using OpenAcademy.Responses;
 namespace OpenAcademy.Controllers;
 
 [ApiController]
-[Route("api/modules/{moduleId:guid}/lessons")]
-public sealed class LessonController(ApplicationDbContext dbContext) : ControllerBase
+[Route("Courses/{courseId:guid}/Modules/{moduleId:guid}/Lessons")]
+public sealed class LessonController(
+    ApplicationDbContext dbContext,
+    ICourseAccess courseAccess) : ControllerBase
 {
+    [HttpGet]
+    [Authorize(Policy = PolicyNames.CanReadCourseContent)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<LessonDto>>>> List(
+        Guid moduleId, CancellationToken ct)
+    {
+        var lessons = await dbContext.Lessons.AsNoTracking()
+            .Where(lesson => lesson.ModuleId == moduleId)
+            .OrderBy(lesson => lesson.Order)
+            .ThenBy(lesson => lesson.Id)
+            .ToListAsync(ct);
+
+        var visibleLessons = new List<LessonDto>(lessons.Count);
+        foreach (var lesson in lessons)
+        {
+            if (await courseAccess.CanAsync(User, CourseOperations.Read,
+                    new CourseResource(CourseResourceKind.Lesson, lesson.Id), ct))
+                visibleLessons.Add(LessonDto.From(lesson));
+        }
+
+        return Ok(ApiResponse<IReadOnlyList<LessonDto>>.Succeeded(visibleLessons));
+    }
+
+    [HttpGet("{lessonId:guid}")]
+    [Authorize(Policy = PolicyNames.CanReadCourseContent)]
+    public async Task<ActionResult<ApiResponse<LessonDto>>> Get(
+        Guid moduleId, Guid lessonId, CancellationToken ct)
+    {
+        var lesson = await dbContext.Lessons.AsNoTracking()
+            .FirstOrDefaultAsync(lesson =>
+                lesson.Id == lessonId && lesson.ModuleId == moduleId, ct);
+        if (lesson is null)
+            return NotFound(ApiResponse<LessonDto>.Failed("The lesson was not found.", "LESSON_NOT_FOUND"));
+
+        if (!await courseAccess.CanAsync(User, CourseOperations.Read,
+                new CourseResource(CourseResourceKind.Lesson, lesson.Id), ct))
+            return Forbid();
+
+        return Ok(ApiResponse<LessonDto>.Succeeded(LessonDto.From(lesson)));
+    }
+
     [HttpPost]
     [Authorize(Policy = PolicyNames.CanEditCourseContent)]
     public async Task<ActionResult<ApiResponse<LessonDto>>> Create(

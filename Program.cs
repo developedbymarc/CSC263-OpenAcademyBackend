@@ -92,7 +92,11 @@ builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
 {
     var db = sp.GetRequiredService<IOptions<DatabaseOptions>>().Value;
 
-    options.UseNpgsql(db.ConnectionString, npgsql =>
+    var connectionString = isMigrationCommand
+        ? (db.MigratorConnectionString ?? db.ConnectionString) // fallback even if migrator connection string is null
+        : db.ConnectionString;
+
+    options.UseNpgsql(connectionString, npgsql =>
     {
         npgsql.EnableRetryOnFailure(
             maxRetryCount: db.MaxRetryCount,

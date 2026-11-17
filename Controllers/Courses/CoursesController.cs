@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,13 +8,67 @@ using OpenAcademy.Data;
 using OpenAcademy.Entities;
 using OpenAcademy.Entities.Courses;
 using OpenAcademy.Responses;
+using OpenAcademy.Services.ExternalServices.MediaService;
 
 namespace OpenAcademy.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public sealed class CoursesController(ApplicationDbContext dbContext) : ControllerBase
+public sealed class CoursesController(
+    ApplicationDbContext dbContext,
+    IMediaService mediaService) : ControllerBase
 {
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<CourseCatalogPageDto>>> Browse(
+        [FromQuery, StringLength(128)] string? title,
+        [FromQuery, StringLength(256)] string? category,
+        [FromQuery, Range(1, 1_000_000)] int page = 1,
+        [FromQuery, Range(1, 100)] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        var query = dbContext.Courses.AsNoTracking()
+            .Where(course => course.Status == CourseStatus.Published);
+
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            var titleSearch = title.Trim();
+            query = query.Where(course => EF.Functions.ILike(course.Title, $"%{titleSearch}%"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            var categorySearch = category.Trim().ToLower();
+            query = query.Where(course => course.Categories.Any(courseCategory =>
+                courseCategory.Name.ToLower() == categorySearch
+                || courseCategory.Slug.ToLower() == categorySearch));
+        }
+
+        var totalCount = await query.CountAsync(ct);
+        var courses = await query
+            .OrderBy(course => course.Title)
+            .ThenBy(course => course.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(course => course.Categories)
+            .ToListAsync(ct);
+
+        var items = courses.Select(course => new CourseCatalogItemDto(
+            course.Id,
+            course.Title,
+            course.Description,
+            string.IsNullOrWhiteSpace(course.ThumbnailBlobPath)
+                ? null
+                : mediaService.GetPublicUrl(course.ThumbnailBlobPath),
+            course.Categories
+                .OrderBy(courseCategory => courseCategory.Name)
+                .Select(courseCategory => new CourseCategoryDto(
+                    courseCategory.Id, courseCategory.Name, courseCategory.Slug))
+                .ToArray())).ToArray();
+
+        return Ok(ApiResponse<CourseCatalogPageDto>.Succeeded(
+            new CourseCatalogPageDto(items, page, pageSize, totalCount)));
+    }
+
     [HttpPost]
     [Authorize(Roles = RoleNames.Instructor)]
     public async Task<ActionResult<ApiResponse<CourseDto>>> Create(
