@@ -70,7 +70,7 @@ public sealed class ModuleController(
             Title = request.Title,
             Description = request.Description,
             Order = request.Order,
-            Status = ModuleStatus.Draft
+            Status = ModuleStatus.Published
         };
         dbContext.Modules.Add(module);
         await dbContext.SaveChangesAsync(ct);

@@ -81,7 +81,7 @@ public sealed class LessonController(
             Description = request.Description,
             Content = request.Content,
             Order = request.Order,
-            Status = LessonStatus.Draft
+            Status = LessonStatus.Published
         };
         dbContext.Lessons.Add(lesson);
         await dbContext.SaveChangesAsync(ct);

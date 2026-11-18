@@ -102,7 +102,7 @@ public sealed class CoursesController(
             Title = request.Title,
             Description = request.Description,
             ThumbnailBlobPath = string.Empty,
-            Status = CourseStatus.Draft
+            Status = CourseStatus.Published
         };
         foreach (var category in categories)
             course.Categories.Add(category);
